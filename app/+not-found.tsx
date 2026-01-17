@@ -1,17 +1,29 @@
 import { Link, Stack } from 'expo-router';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, TouchableOpacity } from 'react-native';
 
-import { Text, View } from '@/components/Themed';
+// 🏛️ Sovereign Components
+import { Text, View } from '@/src/components/Themed';
+import Colors from '@/src/constants/Colors';
 
+/**
+ * 🏰 ROUTE FAIL-SAFE (Pure Build)
+ * Handles invalid navigation requests by redirecting users back to the marketplace.
+ */
 export default function NotFoundScreen() {
   return (
     <>
-      <Stack.Screen options={{ title: 'Oops!' }} />
+      {/* Set the header title for the navigation stack */}
+      <Stack.Screen options={{ title: 'Page Not Found' }} />
+      
       <View style={styles.container}>
-        <Text style={styles.title}>This screen doesn't exist.</Text>
+        <Text style={styles.title}>The page you're looking for doesn't exist.</Text>
 
-        <Link href="/" style={styles.link}>
-          <Text style={styles.linkText}>Go to home screen!</Text>
+        <Link href="/" asChild>
+          <TouchableOpacity style={styles.link}>
+            <Text style={[styles.linkText, { color: Colors.brand.emerald }]}>
+              Go back to Marketplace
+            </Text>
+          </TouchableOpacity>
         </Link>
       </View>
     </>
@@ -23,11 +35,13 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 20,
+    padding: 25,
   },
   title: {
-    fontSize: 20,
-    fontWeight: 'bold',
+    fontSize: 18,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginBottom: 10,
   },
   link: {
     marginTop: 15,
@@ -35,6 +49,8 @@ const styles = StyleSheet.create({
   },
   linkText: {
     fontSize: 14,
-    color: '#2e78b7',
+    fontWeight: '900',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
 });

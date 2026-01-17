@@ -1,41 +1,56 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# 🏰 STORELINK SYSTEM PROTECTION v76.1
+# Hardened for: Secret Containment, Environment Privacy, and Multi-Platform Safety.
 
-# dependencies
+# 📦 DEPENDENCIES
 node_modules/
+.pnp
+.pnp.js
 
-# Expo
+# 🚀 EXPO & METRO
 .expo/
 dist/
 web-build/
 expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
 .metro-health-check*
 
-# debug
+# ☁️ SUPABASE CONTROL (Manifest Section VI)
+# Prevents local database state and function secrets from leaking
+.supabase/
+supabase/.temp/
+supabase/functions/.env
+supabase/.branch
+
+# 🔑 SECRETS & KEYS (CRITICAL SECURITY)
+# Blocks all environment files and native signing certificates
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p8
+*.p12
+*.jks
+*.mobileprovision
+
+# 🤖 NATIVE BLUEPRINTS
+# Native folders are ignored to ensure clean Expo Prebuilds
+/ios
+/android
+
+# 🛠️ DEBUG & LOGS
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+.pnpm-debug.log*
 
-# macOS
-.DS_Store
-*.pem
-
-# local env files
-.env*.local
-
-# typescript
+# 🏗️ TYPOGRAPHY & TYPESCRIPT
 *.tsbuildinfo
 
-# generated native folders
-/ios
-/android
+# 🍏 OS SPECIFIC (System Debris)
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db

@@ -1,39 +1,86 @@
 {
   "expo": {
-    "name": "store-link-mobile",
+    "name": "StoreLink",
     "slug": "store-link-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "storelinkmobile",
+    "scheme": "storelink",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#111827"
     },
+    "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "ng.storelink.app",
+      "associatedDomains": [
+        "applinks:storelink.ng",
+        "applinks:*.storelink.ng"
+      ],
+      "infoPlist": {
+        "NSCameraUsageDescription": "StoreLink requires camera access for the Product Studio.",
+        "NSPhotoLibraryUsageDescription": "StoreLink requires gallery access to upload product assets."
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#111827"
       },
-      "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "package": "ng.storelink.app",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "storelink.ng",
+              "pathPrefix": "/"
+            },
+            {
+              "scheme": "https",
+              "host": "*.storelink.ng",
+              "pathPrefix": "/"
+            }
+          ]
+        }
+      ]
     },
     "web": {
-      "bundler": "metro",
-      "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-audio",
+      "expo-video",
+      "expo-image-picker",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow StoreLink to use the camera to verify your identity.",
+          "microphonePermission": "Allow StoreLink to use the microphone for cinematic reels."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "useFrameworks": "static"
+          }
+        }
+      ]
     ],
-    "experiments": {
-      "typedRoutes": true
+    "extra": {
+      "router": {
+        "origin": "https://storelink.ng"
+      },
+      "eas": {
+        "projectId": "your-eas-project-id"
+      }
     }
   }
 }
