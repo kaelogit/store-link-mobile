@@ -4,12 +4,13 @@ import {
   TextInput, Switch, Alert, ActivityIndicator, Platform 
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   ArrowLeft, MapPin, Lock, ChevronRight, Save, Phone
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-// 🏛️ Sovereign Components
+// App Connection
 import { supabase } from '../../src/lib/supabase';
 import { useUserStore } from '../../src/store/useUserStore'; 
 import { View, Text } from '../../src/components/Themed';
@@ -17,12 +18,13 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🏰 SETTINGS TERMINAL v110.2 (Pure Build)
- * Audited: Section IV Sovereign Negotiation & Section III Geographic Anchoring.
- * Updated: WhatsApp Handshake Integration for Manifest v78.0.
+ * ⚙️ SETTINGS SCREEN v111.0
+ * Purpose: Manage profile, shop details, and privacy.
+ * Language: Simple English so everyone understands.
  */
 export default function SettingsScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const theme = Colors[useColorScheme() ?? 'light'];
   const { profile, refreshUserData } = useUserStore();
 
@@ -33,7 +35,6 @@ export default function SettingsScreen() {
     location: profile?.location || "Lagos",
     whatsapp_number: profile?.whatsapp_number || "",
     is_wardrobe_private: profile?.is_wardrobe_private || false,
-    notifications_enabled: true 
   });
 
   const handleSave = async () => {
@@ -57,9 +58,9 @@ export default function SettingsScreen() {
 
       await refreshUserData();
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert("Registry Updated", "Your identity and trade settings are now live.");
+      Alert.alert("Saved!", "Your profile has been updated.");
     } catch (e: any) {
-      Alert.alert("Sync Error", "Could not broadcast changes to the registry.");
+      Alert.alert("Error", "Could not save. Please check your internet connection.");
     } finally {
       setLoading(false);
     }
@@ -69,12 +70,13 @@ export default function SettingsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* 🏛️ HEADER */}
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
+      
+      {/* HEADER */}
+      <View style={[styles.header, { borderBottomColor: theme.border, paddingTop: insets.top || 20 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft color={theme.text} size={24} strokeWidth={2.5} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>IDENTITY & SETTINGS</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>SETTINGS</Text>
         <TouchableOpacity onPress={handleSave} disabled={loading} style={styles.saveBtn}>
           {loading ? (
             <ActivityIndicator size="small" color={Colors.brand.emerald} />
@@ -86,25 +88,24 @@ export default function SettingsScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollArea}>
         
-        {/* 👤 PUBLIC PROFILE */}
-        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Public Identity</Text>
+        {/* PROFILE SECTION */}
+        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Your Profile</Text>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.inputGroup}>
             <Text style={[styles.fieldLabel, { color: theme.subtext }]}>
-              {isMerchant ? 'SHOP NAME' : 'DISPLAY NAME'}
+              {isMerchant ? 'SHOP NAME' : 'YOUR NAME'}
             </Text>
             <TextInput 
               style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border }]}
               value={form.display_name}
               onChangeText={(v) => setForm({...form, display_name: v})}
-              placeholder="Enter identity name..."
+              placeholder="Enter name..."
               placeholderTextColor={theme.subtext}
             />
           </View>
 
-          {/* 📞 WHATSAPP HANDSHAKE (Section IV) */}
           <View style={styles.inputGroup}>
-            <Text style={[styles.fieldLabel, { color: theme.subtext }]}>WHATSAPP CONTACT (SOVEREIGN LOGISTICS)</Text>
+            <Text style={[styles.fieldLabel, { color: theme.subtext }]}>PHONE NUMBER (FOR SUPPORT)</Text>
             <View style={[styles.inputRow, { backgroundColor: theme.background, borderColor: theme.border }]}>
               <Phone size={16} color={theme.subtext} />
               <TextInput 
@@ -120,42 +121,42 @@ export default function SettingsScreen() {
 
           <View style={[styles.inputGroup, { marginBottom: 0 }]}>
             <Text style={[styles.fieldLabel, { color: theme.subtext }]}>
-              {isMerchant ? 'SHOP BIO' : 'PERSONAL BIO'}
+              {isMerchant ? 'ABOUT YOUR SHOP' : 'ABOUT YOU'}
             </Text>
             <TextInput 
               style={[styles.input, { backgroundColor: theme.background, color: theme.text, borderColor: theme.border, height: 80, paddingTop: 15 }]}
               value={form.bio}
               onChangeText={(v) => setForm({...form, bio: v})}
-              placeholder="Tell the vortex about your presence..."
+              placeholder="Tell us a bit about yourself..."
               placeholderTextColor={theme.subtext}
               multiline
             />
           </View>
         </View>
 
-        {/* 📍 GEOGRAPHIC ANCHOR (Section III) */}
-        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Discovery Vortex</Text>
+        {/* LOCATION SECTION */}
+        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Location</Text>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <TouchableOpacity style={styles.selectorRow} onPress={() => {/* Location Picker */}}>
+          <TouchableOpacity style={styles.selectorRow}>
             <MapPin size={20} color={theme.text} />
             <View style={styles.selectorTextContent}>
-              <Text style={[styles.selectorTitle, { color: theme.text }]}>Trade Location</Text>
+              <Text style={[styles.selectorTitle, { color: theme.text }]}>Current City</Text>
               <Text style={styles.selectorSub}>{form.location}</Text>
             </View>
             <ChevronRight size={16} color={theme.subtext} />
           </TouchableOpacity>
           <Text style={[styles.infoText, { color: theme.subtext }]}>
-            Your location defines your merit boost in the Discovery Vortex for local members.
+            Setting your city helps shoppers near you find your items.
           </Text>
         </View>
 
-        {/* 🛡️ PRIVACY (Section I) */}
-        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Privacy Guard</Text>
+        {/* PRIVACY SECTION */}
+        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Privacy</Text>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <View style={styles.toggleRow}>
             <View style={{ flex: 1, backgroundColor: 'transparent' }}>
               <Text style={[styles.toggleTitle, { color: theme.text }]}>Private Wardrobe</Text>
-              <Text style={[styles.toggleSub, { color: theme.subtext }]}>Hide your collection from general members.</Text>
+              <Text style={[styles.toggleSub, { color: theme.subtext }]}>Hide your saved items from other people.</Text>
             </View>
             <Switch 
               value={form.is_wardrobe_private}
@@ -166,7 +167,7 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* 🚪 SECURITY */}
+        {/* SECURITY ACTIONS */}
         <TouchableOpacity 
           style={[styles.dangerBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} 
           onPress={() => router.push('/auth/reset-password')}
@@ -175,7 +176,7 @@ export default function SettingsScreen() {
           <Text style={[styles.dangerText, { color: theme.text }]}>CHANGE PASSWORD</Text>
         </TouchableOpacity>
 
-        <Text style={[styles.footerVersion, { color: theme.border }]}>STORELINK CORE v110.2</Text>
+        <Text style={[styles.footerVersion, { color: theme.border }]}>VERSION 111.0</Text>
       </ScrollView>
     </View>
   );
@@ -183,7 +184,7 @@ export default function SettingsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, paddingTop: Platform.OS === 'ios' ? 10 : 40, borderBottomWidth: 1.5 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 1.5 },
   headerTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
   backBtn: { width: 44, height: 44, justifyContent: 'center' },
   saveBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'flex-end' },

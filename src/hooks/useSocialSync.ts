@@ -4,8 +4,9 @@ import { useUserStore } from '../store/useUserStore';
 import * as Haptics from 'expo-haptics';
 
 /**
- * 🏰 SOCIAL SYNC HOOK v87.1 (Pure Build)
- * Audited: Section III Interaction Hub & Section I Discovery Weighting.
+ * 🏰 SOCIAL SYNC HOOK v88.0
+ * Purpose: Handles likes and follows in real-time.
+ * Language: Simple English for easier maintenance.
  */
 export const useSocialSync = (productId?: string) => {
   const { profile } = useUserStore();
@@ -14,31 +15,31 @@ export const useSocialSync = (productId?: string) => {
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const isMounted = useRef(true);
 
-  // 🏛️ LIVE SYNC: Initial Hydration & Real-time Subscription
+  // 1. Initial Data Load & Real-time setup
   useEffect(() => {
     isMounted.current = true;
     if (!productId) return;
 
-    const fetchInitialStatus = async () => {
+    const loadInitialData = async () => {
       try {
-        await Promise.all([fetchLikeCount(), checkIfUserLiked()]);
+        await Promise.all([getLikeCount(), checkStatus()]);
       } catch (e) {
-        console.error("Social Registry Sync Error:", e);
+        console.error("Could not load social data:", e);
       }
     };
 
-    fetchInitialStatus();
+    loadInitialData();
 
-    // ⚡ REAL-TIME VORTEX: Listen for global engagement changes
+    // ⚡ Real-time updates: Update count when others like/unlike
     const channel = supabase
-      .channel(`social_vortex:${productId}`)
+      .channel(`product_likes:${productId}`)
       .on('postgres_changes', {
         event: '*',
         schema: 'public',
         table: 'product_likes',
         filter: `product_id=eq.${productId}`,
       }, () => {
-        if (isMounted.current) fetchLikeCount();
+        if (isMounted.current) getLikeCount();
       })
       .subscribe();
 
@@ -48,7 +49,7 @@ export const useSocialSync = (productId?: string) => {
     };
   }, [productId, profile?.id]);
 
-  const fetchLikeCount = async () => {
+  const getLikeCount = async () => {
     const { count, error } = await supabase
       .from('product_likes')
       .select('*', { count: 'exact', head: true })
@@ -57,7 +58,7 @@ export const useSocialSync = (productId?: string) => {
     if (!error && isMounted.current) setLikeCount(count || 0);
   };
 
-  const checkIfUserLiked = async () => {
+  const checkStatus = async () => {
     if (!profile?.id || !productId) return;
     const { data } = await supabase
       .from('product_likes')
@@ -70,39 +71,41 @@ export const useSocialSync = (productId?: string) => {
   };
 
   /**
-   * ❤️ ENGAGEMENT LOGIC (Meritocracy Signal)
-   * Contributes to the merit_score used for marketplace ranking.
+   * ❤️ Like Logic (Optimistic)
+   * We update the UI immediately and fix it if the server fails.
    */
   const toggleLike = useCallback(async () => {
     if (!profile?.id || !productId) return;
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const wasLiked = isLiked;
-    const initialCount = likeCount;
+    const currentCount = likeCount;
 
-    // ⚡ OPTIMISTIC UPDATE: Immediate UI feedback
+    // Fast UI update
     setIsLiked(!wasLiked);
     setLikeCount(prev => wasLiked ? Math.max(0, prev - 1) : prev + 1);
 
     try {
-      // Atomic RPC call for data integrity
-      await supabase.rpc('toggle_product_like', { 
+      // Calls the database function to handle the like/unlike
+      const { error } = await supabase.rpc('toggle_product_like', { 
         p_user_id: profile.id, 
         p_product_id: productId 
       });
+
+      if (error) throw error;
     } catch (error) {
-      // 🔄 ROLLBACK: Revert on registry conflict
+      // Undo the UI change if it failed
       if (isMounted.current) {
         setIsLiked(wasLiked);
-        setLikeCount(initialCount);
+        setLikeCount(currentCount);
       }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
   }, [isLiked, likeCount, productId, profile?.id]);
 
   /**
-   * 🛡️ MERCHANT FOLLOW (Discovery Weight)
-   * Accounts for 40% of the Discovery Vortex weight.
+   * 👤 Follow Logic
+   * Note: Using 'following_id' to match our updated Global Types.
    */
   const toggleFollow = async (sellerId: string, isCurrentlyFollowing: boolean) => {
     if (!profile?.id || loadingId) return;
@@ -112,18 +115,28 @@ export const useSocialSync = (productId?: string) => {
 
     try {
       if (isCurrentlyFollowing) {
-        await supabase.from('follows').delete().eq('follower_id', profile.id).eq('seller_id', sellerId);
+        await supabase
+          .from('follows')
+          .delete()
+          .eq('follower_id', profile.id)
+          .eq('following_id', sellerId); // 🛡️ Updated column name
       } else {
-        await supabase.from('follows').insert({ follower_id: profile.id, seller_id: sellerId });
+        await supabase
+          .from('follows')
+          .insert({ 
+            follower_id: profile.id, 
+            following_id: sellerId  // 🛡️ Updated column name
+          });
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       }
       return true;
     } catch (e) {
+      console.error("Follow error:", e);
       return false;
     } finally {
       setLoadingId(null);
     }
   };
 
-  return { isLiked, likeCount, toggleLike, toggleFollow, loadingId, refresh: fetchLikeCount };
+  return { isLiked, likeCount, toggleLike, toggleFollow, loadingId, refresh: getLikeCount };
 };

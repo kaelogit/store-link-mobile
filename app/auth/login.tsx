@@ -9,24 +9,27 @@ import { useUserStore } from '../../src/store/useUserStore';
 import { LayoutDashboard, Eye, EyeOff, ShieldCheck, ArrowRight, Lock, Mail } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-// 🏛️ Sovereign Components
+// 🚀 SPEED ENGINE
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+
+// App Components
 import { View, Text } from '../../src/components/Themed';
 import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🏰 LOGIN TERMINAL v70.1 (Pure Build Sovereign Edition)
- * Audited: Identity Hydration, MFA Resilience, and Kinetic Rejection.
+ * 🔐 LOGIN SCREEN v72.0
+ * Purpose: Secure entry into the app.
+ * UX: Simple English, smooth animations, and hardware feedback.
  */
 export default function LoginScreen() {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme ?? 'light'];
+  const theme = Colors[useColorScheme() ?? 'light'];
   const { refreshUserData } = useUserStore(); 
+  const queryClient = useQueryClient();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [needsMFA, setNeedsMFA] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
@@ -35,10 +38,12 @@ export default function LoginScreen() {
   const shakeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
+    // Smoothly fade in when the screen loads
     Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
   }, []);
 
-  const triggerRejectionPhysics = () => {
+  /** 🛡️ REJECTION PHYSICS: Shakes the form if login fails */
+  const triggerErrorShake = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     Animated.sequence([
       Animated.timing(shakeAnim, { toValue: 10, duration: 50, useNativeDriver: true }),
@@ -48,63 +53,67 @@ export default function LoginScreen() {
     ]).start();
   };
 
-  const handleLogin = async () => {
-    if (!email || !password || loading) return;
-    setLoading(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-    try {
-      // 1. Auth Handshake
+  /** 🚀 LOGIN LOGIC */
+  const loginMutation = useMutation({
+    mutationFn: async () => {
+      // 1. Sign in with Supabase
       const { data, error } = await supabase.auth.signInWithPassword({ 
         email: email.trim().toLowerCase(), 
         password 
       });
       if (error) throw error;
 
-      // 2. Security Check: MFA detection
+      // 2. Check if Two-Factor Auth is enabled
       const { data: factors } = await supabase.auth.mfa.listFactors();
       if (factors?.all?.some(f => f.status === 'verified')) {
         setNeedsMFA(true);
-        setLoading(false);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        return;
+        return 'MFA_REQUIRED';
       }
 
-      // 3. 🏛️ PURE BUILD HYDRATION (Manifest Section I)
+      // 3. Load the user's latest shop and profile data
       await refreshUserData();
-
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      // Logic: Root Layout Gatekeeper handles the final redirect based on profile state.
-    } catch (e: any) {
-      triggerRejectionPhysics();
-      Alert.alert("Access Denied", e.message.toUpperCase());
-    } finally {
-      setLoading(false);
+      return 'SUCCESS';
+    },
+    onMutate: () => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    },
+    onSuccess: (status) => {
+      if (status === 'SUCCESS') {
+        // Clear old data and pre-load the new profile
+        queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        router.replace('/(tabs)');
+      } else {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      }
+    },
+    onError: (e: any) => {
+      triggerErrorShake();
+      Alert.alert("Login Failed", e.message);
     }
-  };
+  });
 
   const handleVerifyMFA = async () => {
-    if (mfaCode.length < 6 || loading) return;
-    setLoading(true);
+    if (mfaCode.length < 6 || loginMutation.isPending) return;
     try {
       const { error } = await supabase.auth.mfa.challengeAndVerify({
-        factorId: (await supabase.auth.mfa.listFactors()).data?.all[0].id || '',
+        factorId: (await supabase.auth.mfa.listFactors()).data?.all?.[0]?.id || '',
         code: mfaCode,
       });
       if (error) throw error;
 
       await refreshUserData();
+      queryClient.invalidateQueries({ queryKey: ['user-profile'] });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      router.replace('/(tabs)');
     } catch (e: any) {
-      triggerRejectionPhysics();
-      Alert.alert("Verification Failed", e.message.toUpperCase());
-    } finally {
-      setLoading(false);
+      triggerErrorShake();
+      Alert.alert("Invalid Code", "The verification code you entered is incorrect.");
     }
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <KeyboardAvoidingView 
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
         style={{ flex: 1 }}
@@ -121,8 +130,8 @@ export default function LoginScreen() {
                   <View style={[styles.logoFrame, { backgroundColor: theme.surface }]}>
                     <LayoutDashboard size={44} color={Colors.brand.emerald} strokeWidth={2.5} />
                   </View>
-                  <Text style={styles.logoTitle}>StoreLink</Text>
-                  <Text style={[styles.subHeader, { color: theme.subtext }]}>Welcome back to the marketplace</Text>
+                  <Text style={[styles.logoTitle, { color: theme.text }]}>StoreLink</Text>
+                  <Text style={[styles.subHeader, { color: theme.subtext }]}>Welcome back</Text>
                 </View>
 
                 <View style={styles.formContainer}>
@@ -131,7 +140,7 @@ export default function LoginScreen() {
                     <TextInput 
                       style={[styles.input, { color: theme.text }]} 
                       placeholder="Email Address" 
-                      placeholderTextColor={theme.subtext}
+                      placeholderTextColor={`${theme.subtext}80`}
                       value={email}
                       onChangeText={setEmail}
                       keyboardType="email-address"
@@ -145,7 +154,7 @@ export default function LoginScreen() {
                     <TextInput 
                       style={[styles.input, { color: theme.text }]} 
                       placeholder="Password" 
-                      placeholderTextColor={theme.subtext}
+                      placeholderTextColor={`${theme.subtext}80`}
                       value={password}
                       onChangeText={setPassword}
                       secureTextEntry={!showPassword}
@@ -160,20 +169,20 @@ export default function LoginScreen() {
                     style={styles.recoveryBtn} 
                     onPress={() => router.push('/auth/forgot-password')}
                   >
-                    <Text style={[styles.recoveryText, { color: Colors.brand.emerald }]}>Forgot password?</Text>
+                    <Text style={[styles.recoveryText, { color: Colors.brand.emerald }]}>Forgot Password?</Text>
                   </TouchableOpacity>
                 </View>
 
                 <TouchableOpacity 
                   activeOpacity={0.9}
                   style={[styles.mainBtn, { backgroundColor: theme.text }, (!email || !password) && styles.btnDisabled]} 
-                  onPress={handleLogin}
-                  disabled={loading || !email || !password}
+                  onPress={() => loginMutation.mutate()}
+                  disabled={loginMutation.isPending || !email || !password}
                 >
-                  {loading ? <ActivityIndicator color={theme.background} /> : (
+                  {loginMutation.isPending ? <ActivityIndicator color={theme.background} /> : (
                     <>
-                      <Text style={[styles.mainBtnText, { color: theme.background }]}>LOG IN</Text>
-                      <ArrowRight size={18} color={theme.background} strokeWidth={3} />
+                      <Text style={[styles.mainBtnText, { color: theme.background }]}>LOGIN</Text>
+                      <ArrowRight size={20} color={theme.background} strokeWidth={3} />
                     </>
                   )}
                 </TouchableOpacity>
@@ -187,7 +196,7 @@ export default function LoginScreen() {
 
                     <TouchableOpacity onPress={() => router.push('/auth/signup')} style={styles.signupAction}>
                        <Text style={[styles.footerText, { color: theme.subtext }]}>
-                         New here? <Text style={[styles.signupBold, { color: theme.text }]}>Join StoreLink</Text>
+                         New here? <Text style={[styles.signupBold, { color: theme.text }]}>Create an Account</Text>
                        </Text>
                     </TouchableOpacity>
                 </View>
@@ -197,12 +206,12 @@ export default function LoginScreen() {
                 <View style={[styles.vaultIconBg, { backgroundColor: theme.surface }]}>
                   <ShieldCheck size={54} color={Colors.brand.emerald} strokeWidth={2} />
                 </View>
-                <Text style={styles.vaultTitle}>MFA Verification</Text>
-                <Text style={[styles.vaultSub, { color: theme.subtext }]}>Enter the security code to access your profile.</Text>
+                <Text style={[styles.vaultTitle, { color: theme.text }]}>Security Check</Text>
+                <Text style={[styles.vaultSub, { color: theme.subtext }]}>Please enter the six-digit code from your authenticator app.</Text>
                 
                 <TextInput 
                   style={[styles.otpField, { color: Colors.brand.emerald }]} 
-                  placeholder="------" 
+                  placeholder="000000" 
                   placeholderTextColor={theme.border}
                   keyboardType="number-pad" 
                   maxLength={6} 
@@ -215,13 +224,13 @@ export default function LoginScreen() {
                 <TouchableOpacity 
                   style={[styles.mainBtn, { backgroundColor: theme.text }]} 
                   onPress={handleVerifyMFA}
-                  disabled={loading || mfaCode.length < 6}
+                  disabled={loginMutation.isPending || mfaCode.length < 6}
                 >
-                  {loading ? <ActivityIndicator color={theme.background} /> : <Text style={[styles.mainBtnText, { color: theme.background }]}>VERIFY & ENTER</Text>}
+                  {loginMutation.isPending ? <ActivityIndicator color={theme.background} /> : <Text style={[styles.mainBtnText, { color: theme.background }]}>VERIFY & ENTER</Text>}
                 </TouchableOpacity>
                 
                 <TouchableOpacity onPress={() => setNeedsMFA(false)} style={styles.abortBtn}>
-                  <Text style={[styles.abortText, { color: theme.subtext }]}>Go back</Text>
+                  <Text style={[styles.abortText, { color: theme.subtext }]}>Back to Login</Text>
                 </TouchableOpacity>
               </View>
             )}
@@ -234,55 +243,56 @@ export default function LoginScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  mainWrapper: { flex: 1, backgroundColor: 'transparent' },
-  scrollContent: { flexGrow: 1, paddingHorizontal: 35, paddingVertical: 50, justifyContent: 'center' },
-  content: { width: '100%', backgroundColor: 'transparent' },
-  header: { alignItems: 'center', marginBottom: 50, backgroundColor: 'transparent' },
+  mainWrapper: { flex: 1 },
+  scrollContent: { flexGrow: 1, paddingHorizontal: 30, paddingVertical: 50, justifyContent: 'center' },
+  content: { width: '100%' },
+  header: { alignItems: 'center', marginBottom: 50 },
   logoFrame: { 
-    width: 85, height: 85, borderRadius: 28, 
-    justifyContent: 'center', alignItems: 'center', marginBottom: 15,
+    width: 90, height: 90, borderRadius: 32, 
+    justifyContent: 'center', alignItems: 'center', marginBottom: 20,
   },
   logoTitle: { fontSize: 36, fontWeight: '900', letterSpacing: -1.5 },
-  subHeader: { fontSize: 14, fontWeight: '600', marginTop: 8 },
-  formContainer: { gap: 16, backgroundColor: 'transparent' },
+  subHeader: { fontSize: 15, fontWeight: '700', marginTop: 8, opacity: 0.5 },
+  formContainer: { gap: 16 },
   inputGroup: { 
     flexDirection: 'row', alignItems: 'center', 
-    borderRadius: 22, paddingHorizontal: 20, height: 68, 
+    borderRadius: 24, paddingHorizontal: 22, height: 72, 
     borderWidth: 1.5
   },
   inputIcon: { marginRight: 15 },
   input: { flex: 1, fontSize: 16, fontWeight: '700' },
-  recoveryBtn: { alignSelf: 'flex-end', marginTop: 4 },
-  recoveryText: { fontSize: 13, fontWeight: '800' },
+  recoveryBtn: { alignSelf: 'flex-end', marginTop: 5 },
+  recoveryText: { fontSize: 13, fontWeight: '900' },
   mainBtn: { 
-    height: 74, borderRadius: 24, 
+    height: 75, borderRadius: 28, 
     flexDirection: 'row', alignItems: 'center', justifyContent: 'center', 
-    gap: 12, marginTop: 35,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.15, shadowRadius: 20
+    gap: 12, marginTop: 40,
+    elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20
   },
-  btnDisabled: { opacity: 0.4 },
-  mainBtnText: { fontWeight: '900', fontSize: 14, letterSpacing: 1 },
-  footer: { marginTop: 60, backgroundColor: 'transparent' },
-  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 15, marginBottom: 35, backgroundColor: 'transparent' },
-  line: { flex: 1, height: 1 },
-  orLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  btnDisabled: { opacity: 0.15 },
+  mainBtnText: { fontWeight: '900', fontSize: 14, letterSpacing: 1.5 },
+  footer: { marginTop: 60 },
+  dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 35 },
+  line: { flex: 1, height: 1.5 },
+  orLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   signupAction: { alignSelf: 'center' },
   footerText: { fontSize: 14, fontWeight: '700' },
   signupBold: { fontWeight: '900' },
-  vaultContent: { alignItems: 'center', backgroundColor: 'transparent' },
+  vaultContent: { alignItems: 'center' },
   vaultIconBg: { 
-    width: 100, height: 100, borderRadius: 35, 
-    justifyContent: 'center', alignItems: 'center', marginBottom: 25 
+    width: 110, height: 110, borderRadius: 40, 
+    justifyContent: 'center', alignItems: 'center', marginBottom: 30
   },
-  vaultTitle: { fontSize: 26, fontWeight: '900' },
+  vaultTitle: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5 },
   vaultSub: { 
     fontSize: 15, textAlign: 'center', 
-    marginTop: 12, paddingHorizontal: 30, lineHeight: 22, fontWeight: '600' 
+    marginTop: 15, paddingHorizontal: 25, lineHeight: 24, fontWeight: '600', opacity: 0.7 
   },
   otpField: { 
     fontSize: 52, fontWeight: '900', textAlign: 'center', 
-    letterSpacing: 10, marginVertical: 45, width: '100%' 
+    letterSpacing: 12, marginVertical: 40, width: '100%',
+    fontVariant: ['tabular-nums']
   },
-  abortBtn: { marginTop: 30 },
-  abortText: { fontSize: 13, fontWeight: '900' }
+  abortBtn: { marginTop: 30, padding: 10 },
+  abortText: { fontSize: 12, fontWeight: '900', letterSpacing: 1 }
 });

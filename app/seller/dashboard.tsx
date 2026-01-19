@@ -1,17 +1,19 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { 
   StyleSheet, TouchableOpacity, ScrollView, 
-  ActivityIndicator, Dimensions, RefreshControl, Platform 
+  ActivityIndicator, Dimensions, RefreshControl, Platform, Image 
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   ShoppingBag, ShieldCheck, 
   Settings, ArrowLeft, PlusCircle, 
-  Zap, ChevronRight, CreditCard, Gem
+  Zap, ChevronRight, CreditCard, Gem,
+  TrendingUp, BarChart3, Store, User, Sparkles
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-// 🏛️ Sovereign Components
+// App Connection
 import { supabase } from '../../src/lib/supabase';
 import { useUserStore } from '../../src/store/useUserStore'; 
 import { View, Text } from '../../src/components/Themed';
@@ -21,12 +23,13 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 MERCHANT DASHBOARD v101.3 (Pure Build)
- * Audited: Section IV Commercial Integrity & Section VI Economic Ledger.
- * Hardened: Sovereign Logistics Removal & TSC Platform Fix.
+ * 🏰 SELLER DASHBOARD v103.0
+ * Purpose: A central hub for managing your store, tracking sales, and fulfilling orders.
+ * Features: Real-time sales tracking, order management, and store settings.
  */
 export default function SellerDashboard() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const { profile, refreshUserData } = useUserStore();
@@ -35,39 +38,37 @@ export default function SellerDashboard() {
   const [refreshing, setRefreshing] = useState(false);
   const [stats, setStats] = useState({ revenue: 0, productCount: 0, activeOrders: 0 });
 
-  const isDiamond = profile?.prestige_weight === 3;
+  const isDiamond = profile?.subscription_plan === 'diamond';
+  const isTrial = profile?.subscription_status === 'trial';
 
   useEffect(() => {
-    fetchBusinessData();
+    fetchStoreData();
   }, [profile?.id]);
 
-  /**
-   * 📡 BUSINESS DATA SYNC
-   * Aggregates live registry data and verified revenue from completed handshakes.
-   */
-  const fetchBusinessData = async () => {
+  /** 📡 DATA SYNC: Updating store stats */
+  const fetchStoreData = async () => {
     if (!profile?.id) return;
     try {
-      // 1. Live Product Count (Registry Section II)
+      // 1. Total Active Items
       const { count: prodCount } = await supabase
         .from('products')
         .select('*', { count: 'exact', head: true })
         .eq('seller_id', profile.id)
         .eq('is_active', true);
 
-      // 2. Verified Revenue (Manifest Section IV - Completed Only)
+      // 2. Total Sales (Completed Orders)
       const { data: completedOrders } = await supabase
         .from('orders')
         .select('total_amount')
         .eq('seller_id', profile.id)
         .eq('status', 'completed');
 
-      // 3. Active Handshakes (Pending/Confirmed)
+      // 3. Current Orders (Pending or Sent)
       const { count: activeCount } = await supabase
         .from('orders')
         .select('*', { count: 'exact', head: true })
         .eq('seller_id', profile.id)
-        .in('status', ['pending', 'confirmed']);
+        .in('status', ['pending', 'confirmed', 'delivered']);
 
       const revenue = completedOrders?.reduce((sum, o) => sum + (o.total_amount || 0), 0) || 0;
 
@@ -87,7 +88,7 @@ export default function SellerDashboard() {
   const onRefresh = useCallback(() => {
     setRefreshing(true);
     refreshUserData();
-    fetchBusinessData();
+    fetchStoreData();
   }, [profile?.id]);
 
   const NavTile = ({ icon: Icon, label, sub, onPress, color, badge }: any) => (
@@ -105,7 +106,7 @@ export default function SellerDashboard() {
         <View style={styles.labelRow}>
           <Text style={[styles.tileLabel, { color: theme.text }]}>{label}</Text>
           {badge > 0 && (
-            <View style={styles.badge}>
+            <View style={[styles.badge, { backgroundColor: color }]}>
               <Text style={styles.badgeText}>{badge}</Text>
             </View>
           )}
@@ -124,81 +125,96 @@ export default function SellerDashboard() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* 🏛️ MERCHANT HEADER */}
-      <View style={[styles.header, { borderBottomColor: theme.border }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} color={theme.text} strokeWidth={2.5} />
-        </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>MERCHANT DASHBOARD</Text>
+      
+      {/* 🏛️ HEADER: Store Identity */}
+      <View style={[styles.header, { borderBottomColor: theme.border, paddingTop: insets.top + 10 }]}>
+        <View style={styles.headerLeft}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+            <ArrowLeft size={24} color={theme.text} strokeWidth={2.5} />
+          </TouchableOpacity>
+          <View style={styles.identityContainer}>
+            <View style={styles.nameRow}>
+              <Text style={[styles.headerName, { color: theme.text }]}>{profile?.display_name?.toUpperCase()}</Text>
+              {isDiamond && <Gem size={12} color="#8B5CF6" fill="#8B5CF6" />}
+            </View>
+            <View style={styles.slugRow}>
+              <Text style={[styles.headerSlug, { color: theme.subtext }]}>@{profile?.slug}</Text>
+              {isDiamond && <Gem size={8} color="#A78BFA" fill="#A78BFA" style={{ marginLeft: 4 }} />}
+            </View>
+          </View>
+        </View>
         <TouchableOpacity onPress={() => router.push('/seller/post-product')}>
-          <PlusCircle size={26} color={Colors.brand.emerald} strokeWidth={2.5} />
+          <PlusCircle size={28} color={isDiamond ? '#8B5CF6' : Colors.brand.emerald} strokeWidth={2.5} />
         </TouchableOpacity>
       </View>
 
       <ScrollView 
-        contentContainerStyle={styles.scrollContent} 
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]} 
         showsVerticalScrollIndicator={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={Colors.brand.emerald} />}
       >
         
-        {/* 📉 PERFORMANCE SNAPSHOT */}
+        {/* 📉 STORE STATS */}
         <View style={styles.statsRow}>
           <View style={[styles.statCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-            <Text style={styles.statSub}>VERIFIED SALES</Text>
+            <View style={styles.statHeader}>
+              <BarChart3 size={12} color={theme.subtext} />
+              <Text style={styles.statSub}>TOTAL SALES</Text>
+            </View>
             <Text style={[styles.statValue, { color: theme.text }]}>₦{stats.revenue.toLocaleString()}</Text>
           </View>
           
           <TouchableOpacity 
             onPress={() => router.push('/seller/subscription')}
-            style={[styles.statCard, { backgroundColor: isDiamond ? '#F5F3FF' : theme.surface, borderColor: isDiamond ? '#8B5CF6' : theme.border }]}
+            activeOpacity={0.8}
+            style={[styles.statCard, isDiamond && styles.diamondCard, { backgroundColor: isDiamond ? '#F5F3FF' : theme.surface, borderColor: isDiamond ? '#8B5CF6' : theme.border }]}
           >
-            <View style={styles.row}>
-              <Text style={[styles.statSub, isDiamond && { color: '#8B5CF6' }]}>PRESTIGE TIER</Text>
-              {isDiamond && <Gem size={10} color="#8B5CF6" fill="#8B5CF6" />}
+            <View style={styles.statHeader}>
+              {isDiamond ? <Sparkles size={12} color="#8B5CF6" /> : <Store size={12} color={theme.subtext} />}
+              <Text style={[styles.statSub, isDiamond && { color: '#8B5CF6' }]}>STORE PLAN</Text>
             </View>
             <Text style={[styles.statValue, { color: isDiamond ? '#8B5CF6' : theme.text }]}>
-              {profile?.subscription_plan?.toUpperCase() || 'NONE'}
+              {isTrial ? 'TRIAL' : (profile?.subscription_plan?.toUpperCase() || 'STANDARD')}
             </Text>
           </TouchableOpacity>
         </View>
 
         {/* 🛠️ STORE TOOLS */}
-        <Text style={[styles.sectionTitle, { color: theme.subtext }]}>Store Tools</Text>
+        <Text style={[styles.sectionTitle, { color: theme.subtext }]}>Store Controls</Text>
         <View style={styles.menuList}>
           <NavTile 
             icon={ShoppingBag} 
-            label="Order Processing" 
-            sub="Fulfillment and tracking" 
+            label="Manage Orders" 
+            sub="Active orders and delivery" 
             color="#3B82F6" 
             badge={stats.activeOrders}
             onPress={() => router.push('/seller/orders')} 
           />
-          {/* 🛡️ LOGISTICS HUB REMOVED: Section IV Sovereign Negotiation Protocol */}
           <NavTile 
             icon={Zap} 
-            label="Coin Incentives" 
-            sub="Buyer reward protocol" 
+            label="Store Rewards" 
+            sub="Manage coin rewards for buyers" 
             color="#F59E0B" 
             onPress={() => router.push('/seller/loyalty')} 
           />
           <NavTile 
             icon={CreditCard} 
-            label="Account & Billing" 
-            sub="Tier and prestige status" 
+            label="Subscription" 
+            sub="Plan updates and billing" 
             color="#8B5CF6" 
             onPress={() => router.push('/seller/subscription')} 
           />
           <NavTile 
             icon={ShieldCheck} 
-            label="Trust Verification" 
-            sub="Identity verification" 
+            label="Store Verification" 
+            sub="Get your verified badge" 
             color={Colors.brand.emerald} 
             onPress={() => router.push('/seller/verification')} 
           />
           <NavTile 
             icon={Settings} 
-            label="Shop Configuration" 
-            sub="Public brand profile" 
+            label="Store Settings" 
+            sub="Edit profile and inventory" 
             color="#6B7280" 
             onPress={() => router.push('/seller/settings')} 
           />
@@ -208,7 +224,8 @@ export default function SellerDashboard() {
           style={[styles.visitBtn, { backgroundColor: theme.surface, borderColor: theme.border }]}
           onPress={() => router.push(`/profile/${profile?.id}`)}
         >
-          <Text style={[styles.visitText, { color: theme.subtext }]}>PREVIEW PUBLIC SHOP</Text>
+          <User size={18} color={theme.subtext} />
+          <Text style={[styles.visitText, { color: theme.subtext }]}>PREVIEW MY STORE</Text>
           <ChevronRight size={16} color={theme.border} strokeWidth={3} />
         </TouchableOpacity>
 
@@ -220,25 +237,33 @@ export default function SellerDashboard() {
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, paddingTop: Platform.OS === 'ios' ? 10 : 45, borderBottomWidth: 1.5 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, borderBottomWidth: 1.5 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 15 },
+  identityContainer: { backgroundColor: 'transparent' },
+  nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  slugRow: { flexDirection: 'row', alignItems: 'center', marginTop: 2 },
+  headerName: { fontSize: 13, fontWeight: '900', letterSpacing: 0.5 },
+  headerSlug: { fontSize: 10, fontWeight: '700', opacity: 0.6 },
   headerTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
   backBtn: { width: 40, height: 40, justifyContent: 'center' },
   scrollContent: { padding: 25 },
-  statsRow: { flexDirection: 'row', gap: 15, marginBottom: 35 },
-  statCard: { flex: 1, padding: 20, borderRadius: 24, borderWidth: 1.5 },
+  statsRow: { flexDirection: 'row', gap: 15, marginBottom: 40 },
+  statCard: { flex: 1, padding: 22, borderRadius: 28, borderWidth: 1.5 },
+  diamondCard: { shadowColor: '#8B5CF6', shadowOpacity: 0.1, shadowRadius: 10, elevation: 4 },
+  statHeader: { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 10 },
   statSub: { fontSize: 8, fontWeight: '900', color: '#9CA3AF', letterSpacing: 1.5 },
-  statValue: { fontSize: 18, fontWeight: '900', marginTop: 8, letterSpacing: -0.5 },
-  sectionTitle: { fontSize: 9, fontWeight: '900', letterSpacing: 2, marginBottom: 20, textTransform: 'uppercase' },
+  statValue: { fontSize: 19, fontWeight: '900', letterSpacing: -0.5 },
+  sectionTitle: { fontSize: 9, fontWeight: '900', letterSpacing: 2, marginBottom: 20, textTransform: 'uppercase', opacity: 0.6 },
   menuList: { gap: 12 },
-  tile: { flexDirection: 'row', alignItems: 'center', padding: 18, borderRadius: 24, borderWidth: 1.5 },
-  tileIcon: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  tileText: { flex: 1, marginLeft: 15, backgroundColor: 'transparent' },
-  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'transparent' },
-  tileLabel: { fontSize: 14, fontWeight: '800' },
-  tileSub: { fontSize: 10, fontWeight: '600', marginTop: 2 },
-  badge: { backgroundColor: '#EF4444', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 },
+  tile: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 26, borderWidth: 1.5 },
+  tileIcon: { width: 48, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  tileText: { flex: 1, marginLeft: 15 },
+  labelRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  tileLabel: { fontSize: 15, fontWeight: '900' },
+  tileSub: { fontSize: 11, fontWeight: '600', marginTop: 3, opacity: 0.6 },
+  badge: { paddingHorizontal: 10, paddingVertical: 3, borderRadius: 12 },
   badgeText: { color: 'white', fontSize: 10, fontWeight: '900' },
-  visitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, marginTop: 45, padding: 22, borderRadius: 26, borderWidth: 1.5 },
+  visitBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 50, padding: 22, borderRadius: 28, borderWidth: 1.5 },
   visitText: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'transparent' }
+  row: { flexDirection: 'row', alignItems: 'center', gap: 6 }
 });

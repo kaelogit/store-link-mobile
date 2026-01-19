@@ -5,13 +5,13 @@ import {
 } from 'react-native';
 import { 
   LogOut, ShieldCheck, ChevronRight, LayoutDashboard, 
-  ShoppingBag, Coins, Zap, X, Heart, Truck,
+  ShoppingBag, Coins, X, Heart, Truck,
   Settings2, HelpCircle, Package 
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
-// 🏛️ Sovereign Components
+// App Components
 import { supabase } from '../lib/supabase';
 import { View, Text } from './Themed';
 import Colors from '../constants/Colors';
@@ -26,8 +26,9 @@ interface DrawerMenuProps {
 }
 
 /**
- * 🏰 DRAWER MENU v97.6 (Pure Build)
- * Audited: Section I Role-Based Navigation & Vortex Theme Sync.
+ * 🏰 DRAWER MENU v98.0
+ * Purpose: Main navigation hub for account settings and store management.
+ * Features: Shows different options depending on whether the user is a buyer or seller.
  */
 export const DrawerMenu = ({ isOpen, onClose, isSeller }: DrawerMenuProps) => {
   const router = useRouter();
@@ -64,6 +65,7 @@ export const DrawerMenu = ({ isOpen, onClose, isSeller }: DrawerMenuProps) => {
         />
         
         <View style={[styles.content, { backgroundColor: theme.background }]}>
+          {/* Pull handle for visual cue */}
           <View style={[styles.handle, { backgroundColor: theme.border }]} />
           
           <ScrollView 
@@ -77,48 +79,48 @@ export const DrawerMenu = ({ isOpen, onClose, isSeller }: DrawerMenuProps) => {
               </TouchableOpacity>
             </View>
 
-            {/* 🛠️ SHOP MANAGEMENT: Only for Sellers */}
+            {/* 🛠️ SHOP MANAGEMENT: Only visible for Sellers */}
             {isSeller ? (
               <View style={[styles.menuGroup, { backgroundColor: 'transparent' }]}>
                 <Text style={[styles.groupLabel, { color: theme.subtext }]}>SHOP MANAGEMENT</Text>
                 <MenuLink 
                   theme={theme}
                   icon={<Package size={20} color={Colors.brand.emerald} />} 
-                  label="Inventory" 
-                  sub="Stock & pricing"
+                  label="My Inventory" 
+                  sub="Manage items & pricing"
                   onPress={() => navigateTo('/seller/inventory')} 
                 />
                 <MenuLink 
                   theme={theme}
                   icon={<LayoutDashboard size={20} color={Colors.brand.emerald} />} 
                   label="Sales Dashboard" 
-                  sub="Revenue tracking"
+                  sub="Track your earnings"
                   onPress={() => navigateTo('/seller/dashboard')} 
                 />
                 <MenuLink 
                   theme={theme}
                   icon={<Truck size={20} color={theme.text} />} 
-                  label="Shipping Zones" 
-                  sub="Manage deliveries"
+                  label="Shipping" 
+                  sub="Manage your deliveries"
                   onPress={() => navigateTo('/seller/logistics')} 
                 />
                 <MenuLink 
                   theme={theme}
                   icon={<ShieldCheck size={20} color="#3B82F6" />} 
-                  label="Account Status" 
-                  sub="Verification & trust"
+                  label="Shop Status" 
+                  sub="Verification details"
                   onPress={() => navigateTo('/seller/verification')} 
                 />
               </View>
             ) : (
-              /* 🚀 UPSELL: For Members */
+              /* 🚀 UPSELL: Encourage buyers to start selling */
               <TouchableOpacity 
                 style={[styles.onboardingBanner, { backgroundColor: theme.text, borderColor: theme.border }]}
                 onPress={() => navigateTo('/onboarding/setup')}
               >
                 <View style={{ flex: 1, backgroundColor: 'transparent' }}>
                     <Text style={[styles.bannerTitle, { color: theme.background }]}>Start Selling</Text>
-                    <Text style={[styles.bannerSub, { color: theme.background + '80' }]}>Open your shop and post products.</Text>
+                    <Text style={[styles.bannerSub, { color: theme.background + '80' }]}>Open your shop and reach more customers.</Text>
                 </View>
                 <ChevronRight size={18} color={theme.background} strokeWidth={3} />
               </TouchableOpacity>
@@ -130,40 +132,40 @@ export const DrawerMenu = ({ isOpen, onClose, isSeller }: DrawerMenuProps) => {
               <MenuLink 
                 theme={theme}
                 icon={<Coins size={20} color={Colors.brand.gold} fill={Colors.brand.gold} />} 
-                label="Wallet & Coins" 
-                sub="Your balance"
+                label="My Wallet" 
+                sub="View your coin balance"
                 onPress={() => navigateTo('/wallet')} 
               />
               <MenuLink 
                 theme={theme}
                 icon={<ShoppingBag size={20} color={theme.text} />} 
                 label="My Orders" 
-                sub="History & tracking"
+                sub="History and tracking"
                 onPress={() => navigateTo('/orders')} 
               />
               <MenuLink 
                 theme={theme}
                 icon={<Heart size={20} color="#EF4444" />} 
                 label="Saved Items" 
-                sub="Your wishlist"
+                sub="Your personalized wishlist"
                 onPress={() => navigateTo('/wishlist')} 
               />
             </View>
 
             <View style={[styles.divider, { backgroundColor: theme.surface }]} />
 
-            {/* ⚙️ SETTINGS */}
+            {/* ⚙️ SYSTEM SETTINGS */}
             <View style={[styles.menuGroup, { backgroundColor: 'transparent' }]}>
               <MenuLink 
                 theme={theme}
                 icon={<Settings2 size={20} color={theme.subtext} />} 
-                label="Settings" 
+                label="App Settings" 
                 onPress={() => navigateTo('/settings')} 
               />
               <MenuLink 
                 theme={theme}
                 icon={<HelpCircle size={20} color={theme.subtext} />} 
-                label="Support" 
+                label="Help & Support" 
                 onPress={() => navigateTo('/activity/notifications')} 
               />
             </View>

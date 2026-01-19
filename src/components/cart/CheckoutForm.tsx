@@ -1,8 +1,9 @@
 import React from 'react';
-import { StyleSheet, TextInput } from 'react-native';
-import { MapPin, User, Phone, ShieldCheck } from 'lucide-react-native';
+import { StyleSheet, TextInput, Platform } from 'react-native';
+import { MapPin, User, Phone, ShieldCheck, AlertCircle } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 
-// 🏛️ Sovereign Components
+// App Components
 import { View, Text } from '../Themed';
 import Colors from '../../constants/Colors';
 import { useColorScheme } from '../useColorScheme';
@@ -14,140 +15,184 @@ interface CheckoutFormProps {
 }
 
 /**
- * 🏰 CHECKOUT FORM v76.1 (Pure Build)
- * Audited: Plain English & Section I Profile Verification.
+ * 🏰 CHECKOUT FORM v78.0
+ * Purpose: A secure input module for capturing delivery and contact details.
+ * Logic: Displays verified account details alongside a dedicated address input.
+ * Visual: High-fidelity layout with premium border synchronization for Diamond users.
  */
 export const CheckoutForm = ({ address, setAddress }: CheckoutFormProps) => {
   const { profile } = useUserStore();
-  const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme ?? 'light'];
+  const theme = Colors[useColorScheme() ?? 'light'];
+
+  const isDiamond = profile?.subscription_plan === 'diamond';
 
   return (
-    <View style={[styles.container, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-      <View style={[styles.header, { backgroundColor: 'transparent' }]}>
-        <Text style={[styles.title, { color: theme.text }]}>DELIVERY INFO</Text>
-        <View style={styles.verifiedBadge}>
-          <ShieldCheck size={10} color={Colors.brand.emerald} strokeWidth={3} />
-          <Text style={styles.verifiedText}>SECURE CHECKOUT</Text>
+    <View style={[
+      styles.container, 
+      { backgroundColor: theme.surface, borderColor: theme.border },
+      isDiamond && styles.diamondBorder
+    ]}>
+      
+      {/* 🛡️ DELIVERY HEADER */}
+      <View style={styles.header}>
+        <View style={styles.titleGroup}>
+          <Text style={[styles.title, { color: theme.text }]}>DELIVERY INFORMATION</Text>
+          <View style={[styles.secureBadge, { backgroundColor: Colors.brand.emerald + '15' }]}>
+            <ShieldCheck size={10} color={Colors.brand.emerald} strokeWidth={3} />
+            <Text style={[styles.secureText, { color: Colors.brand.emerald }]}>SECURE</Text>
+          </View>
         </View>
       </View>
 
-      {/* 👤 READ-ONLY ACCOUNT INFO */}
-      <View style={[styles.identityRow, { backgroundColor: 'transparent' }]}>
-        <View style={[styles.identityNode, { backgroundColor: theme.background, borderColor: theme.border }]}>
-          <User size={14} color={theme.subtext} />
-          <Text style={[styles.identityValue, { color: theme.text }]}>
-            {profile?.full_name?.toUpperCase() || 'NO NAME SET'}
+      {/* ⚓ CONTACT DETAILS: Verified user information */}
+      <View style={styles.registryRow}>
+        <View style={[styles.anchorNode, { backgroundColor: theme.background, borderColor: theme.border }]}>
+          <User size={14} color={theme.subtext} strokeWidth={2.5} />
+          <Text style={[styles.anchorValue, { color: theme.text }]} numberOfLines={1}>
+            {profile?.full_name?.toUpperCase() || 'NAME NOT SET'}
           </Text>
         </View>
-        <View style={[styles.identityNode, { backgroundColor: theme.background, borderColor: theme.border }]}>
-          <Phone size={14} color={theme.subtext} />
-          <Text style={[styles.identityValue, { color: theme.text }]}>
-            {profile?.whatsapp_number || 'NO PHONE SET'}
+        <View style={[styles.anchorNode, { backgroundColor: theme.background, borderColor: theme.border }]}>
+          <Phone size={14} color={theme.subtext} strokeWidth={2.5} />
+          <Text style={[styles.anchorValue, { color: theme.text }]}>
+            {profile?.whatsapp_number || 'NO CONTACT SET'}
           </Text>
         </View>
       </View>
 
-      <Text style={[styles.label, { color: theme.subtext }]}>DELIVERY ADDRESS *</Text>
-      <View style={[styles.inputWrapper, { backgroundColor: theme.background, borderColor: theme.border }]}>
-        <MapPin size={18} color={theme.text} />
+      {/* 📍 ADDRESS INPUT */}
+      <View style={styles.labelRow}>
+        <Text style={[styles.label, { color: theme.subtext }]}>SHIPPING ADDRESS</Text>
+        <AlertCircle size={10} color={Colors.brand.emerald} />
+      </View>
+
+      <View style={[styles.inputContainer, { backgroundColor: theme.background, borderColor: theme.border }]}>
+        <MapPin size={20} color={theme.text} strokeWidth={2.5} style={styles.inputIcon} />
         <TextInput
-          placeholder="House No, Street Name, City, State"
-          placeholderTextColor={theme.subtext}
+          placeholder="Building No, Street Name, City, State..."
+          placeholderTextColor={`${theme.subtext}80`}
           style={[styles.input, { color: theme.text }]}
           value={address}
           onChangeText={setAddress}
           multiline
-          numberOfLines={2}
+          numberOfLines={3}
+          selectionColor={Colors.brand.emerald}
+          autoCapitalize="words"
+          onFocus={() => Haptics.selectionAsync()}
         />
       </View>
       
-      <Text style={[styles.helperText, { color: theme.subtext }]}>
-        Please provide a detailed address to ensure your order reaches you without delay.
-      </Text>
+      <View style={styles.footerRow}>
+        <Text style={[styles.helperText, { color: theme.subtext }]}>
+          Precision: Providing a detailed address helps ensure faster delivery.
+        </Text>
+      </View>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    padding: 22,
+    padding: 24,
     borderRadius: 32,
     marginBottom: 25,
     borderWidth: 1.5,
   },
+  diamondBorder: {
+    borderColor: '#8B5CF6',
+    borderWidth: 2,
+  },
   header: { 
+    marginBottom: 20,
+    backgroundColor: 'transparent'
+  },
+  titleGroup: {
     flexDirection: 'row', 
-    justifyContent: 'space-between', 
+    justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 15 
+    backgroundColor: 'transparent'
   },
   title: { 
-    fontSize: 10, 
+    fontSize: 11, 
     fontWeight: '900', 
-    letterSpacing: 1.5 
+    letterSpacing: 2 
   },
-  verifiedBadge: { 
+  secureBadge: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     gap: 4, 
-    backgroundColor: '#ECFDF5', 
-    paddingHorizontal: 8, 
-    paddingVertical: 4, 
-    borderRadius: 8 
+    paddingHorizontal: 10, 
+    paddingVertical: 5, 
+    borderRadius: 10 
   },
-  verifiedText: { 
+  secureText: { 
     fontSize: 8, 
     fontWeight: '900', 
-    color: '#059669' 
+    letterSpacing: 1
   },
-  identityRow: { 
+  registryRow: { 
     flexDirection: 'row', 
     gap: 12, 
-    marginBottom: 20 
+    marginBottom: 25,
+    backgroundColor: 'transparent'
   },
-  identityNode: { 
+  anchorNode: { 
     flex: 1, 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 8, 
-    padding: 12, 
-    borderRadius: 14,
-    borderWidth: 1,
+    gap: 10, 
+    padding: 14, 
+    borderRadius: 16,
+    borderWidth: 1.2,
   },
-  identityValue: { 
-    fontSize: 9, 
+  anchorValue: { 
+    fontSize: 10, 
     fontWeight: '800', 
+    flex: 1,
+  },
+  labelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 12,
+    marginLeft: 4,
+    backgroundColor: 'transparent'
   },
   label: { 
-    fontSize: 9, 
+    fontSize: 10, 
     fontWeight: '900', 
-    letterSpacing: 1, 
-    marginBottom: 10, 
-    marginLeft: 4 
+    letterSpacing: 1.5, 
   },
-  inputWrapper: { 
+  inputContainer: { 
     flexDirection: 'row', 
     alignItems: 'flex-start', 
-    paddingHorizontal: 18, 
-    paddingVertical: 15, 
-    borderRadius: 20, 
-    gap: 12, 
+    paddingHorizontal: 20, 
+    paddingVertical: 18, 
+    borderRadius: 24, 
+    gap: 15, 
     borderWidth: 1.5, 
-    minHeight: 80
+    minHeight: 100
+  },
+  inputIcon: {
+    marginTop: 2
   },
   input: { 
     flex: 1, 
-    fontSize: 14, 
+    fontSize: 15, 
     fontWeight: '600', 
     textAlignVertical: 'top',
-    paddingTop: 0
+    paddingTop: 0,
+    lineHeight: 22,
+  },
+  footerRow: {
+    marginTop: 15,
+    marginLeft: 4,
+    backgroundColor: 'transparent'
   },
   helperText: { 
     fontSize: 10, 
-    fontWeight: '600', 
-    marginTop: 12, 
+    fontWeight: '700', 
     lineHeight: 16,
-    marginLeft: 4
+    opacity: 0.6
   }
 });

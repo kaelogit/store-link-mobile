@@ -1,13 +1,14 @@
 import React from 'react';
 import { 
   StyleSheet, Modal, TouchableOpacity, 
-  Dimensions, Linking, Platform 
+  Dimensions, Platform 
 } from 'react-native';
-import { Check, MessageSquare, Send } from 'lucide-react-native';
+import { Check, MessageSquare, ArrowRight, ShieldCheck } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 
-// 🏛️ Sovereign Components
+// App Connection
 import { View, Text } from './Themed';
 import Colors from '../constants/Colors';
 import { useColorScheme } from './useColorScheme';
@@ -15,70 +16,89 @@ import { useColorScheme } from './useColorScheme';
 interface SuccessProps {
   visible: boolean;
   storeName: string;
-  storeId?: string; 
-  whatsappUrl?: string; 
-  channel: 'WHATSAPP' | 'CHAT' | null;
   onClose: () => void;
+  storeId?: string; 
+  threadId?: string;
 }
 
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 ORDER SUCCESS v5.1 (Pure Build)
- * Audited: Section VII Messaging Governance & Vortex Theme Sync.
+ * 🏰 ORDER SUCCESS MODAL v8.0
+ * Purpose: Confirmation screen after a successful checkout.
+ * Features: Direct routing to internal chat and simple English labels.
  */
 export const OrderSuccessModal = ({ 
-  visible, storeName, storeId, whatsappUrl, channel, onClose 
+  visible, storeName, threadId, onClose 
 }: SuccessProps) => {
   const router = useRouter();
-  const colorScheme = useColorScheme();
-  const theme = Colors[colorScheme ?? 'light'];
+  const theme = Colors[useColorScheme() ?? 'light'];
 
-  const handleAction = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    if (channel === 'WHATSAPP' && whatsappUrl) {
-      Linking.openURL(whatsappUrl);
-    } else if (channel === 'CHAT' && storeId) {
-      router.push(`/chat/${storeId}` as any);
-    }
-    
+  /** 💬 GO TO CONVERSATION */
+  const handleViewOrder = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     onClose();
+    
+    if (threadId) {
+      // Navigate to the specific chat thread for this order
+      router.push(`/chat/${threadId}` as any);
+    } else {
+      // Fallback: Go to the general messages tab
+      router.replace('/(tabs)/messages');
+    }
+  };
+
+  /** 🏠 BACK TO FEED */
+  const handleFinalExit = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onClose();
+    router.replace('/(tabs)');
   };
 
   return (
-    <Modal visible={visible} transparent animationType="fade">
-      <View style={styles.overlay}>
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={styles.masterOverlay}>
+        <BlurView intensity={30} tint="dark" style={StyleSheet.absoluteFill} />
+        
         <View style={[styles.content, { backgroundColor: theme.background }]}>
           
-          {/* 🏛️ SUCCESS ICON */}
+          {/* SUCCESS ICON */}
           <View style={[styles.iconCircle, { backgroundColor: Colors.brand.emerald }]}>
-            <Check size={40} color="white" strokeWidth={4} />
+            <Check size={44} color="white" strokeWidth={4} />
           </View>
 
-          <Text style={[styles.title, { color: theme.text }]}>ORDER PLACED</Text>
-          <Text style={[styles.subtext, { color: theme.subtext }]}>
-            Your order for <Text style={[styles.bold, { color: theme.text }]}>{storeName.toUpperCase()}</Text> has been sent to the merchant.
-          </Text>
+          <Text style={[styles.title, { color: theme.text }]}>ORDER PLACED!</Text>
+          
+          <View style={styles.messageStack}>
+            <Text style={[styles.subtext, { color: theme.subtext }]}>
+              Your request for <Text style={styles.bold}>@{storeName.toLowerCase()}</Text> has been sent.
+            </Text>
+            
+            {/* SAFETY LABEL */}
+            <View style={[styles.safetyBadge, { backgroundColor: theme.surface }]}>
+              <ShieldCheck size={14} color={Colors.brand.emerald} />
+              <Text style={[styles.safetyText, { color: theme.text }]}>SECURE TRANSACTION</Text>
+            </View>
+          </View>
 
-          {/* 🚀 DYNAMIC ACTION */}
+          {/* MAIN ACTION BUTTON */}
           <TouchableOpacity 
             style={[styles.actionBtn, { backgroundColor: theme.text }]} 
-            onPress={handleAction}
+            onPress={handleViewOrder}
             activeOpacity={0.8}
           >
-            {channel === 'WHATSAPP' ? (
-              <Send size={20} color={theme.background} fill={theme.background} />
-            ) : (
-              <MessageSquare size={20} color={theme.background} fill={theme.background} />
-            )}
-            <Text style={[styles.btnText, { color: theme.background }]}>
-              {channel === 'WHATSAPP' ? 'FINISH ON WHATSAPP' : 'OPEN SECURE CHAT'}
-            </Text>
+            <MessageSquare size={18} color={theme.background} fill={theme.background} />
+            <Text style={[styles.btnText, { color: theme.background }]}>VIEW ORDER STATUS</Text>
+            <ArrowRight size={18} color={theme.background} strokeWidth={3} />
           </TouchableOpacity>
 
-          <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: 'transparent' }]}>
-            <Text style={[styles.closeText, { color: theme.border }]}>RETURN TO HOME</Text>
+          {/* SECONDARY ACTION */}
+          <TouchableOpacity 
+            onPress={handleFinalExit} 
+            style={styles.closeBtn}
+            activeOpacity={0.6}
+          >
+            <Text style={[styles.closeText, { color: theme.subtext }]}>CONTINUE SHOPPING</Text>
           </TouchableOpacity>
 
         </View>
@@ -88,18 +108,19 @@ export const OrderSuccessModal = ({
 };
 
 const styles = StyleSheet.create({
-  overlay: { 
+  masterOverlay: { 
     flex: 1, 
-    backgroundColor: 'rgba(0,0,0,0.85)', 
     justifyContent: 'center', 
     alignItems: 'center',
-    padding: 30 
+    padding: 25 
   },
   content: { 
     width: '100%', 
     borderRadius: 40, 
-    padding: 40, 
+    padding: 35, 
     alignItems: 'center',
+    borderWidth: 1.5,
+    borderColor: 'rgba(255,255,255,0.1)',
     ...Platform.select({
       ios: {
         shadowColor: '#000',
@@ -112,26 +133,44 @@ const styles = StyleSheet.create({
     })
   },
   iconCircle: { 
-    width: 80, 
-    height: 80, 
-    borderRadius: 40, 
+    width: 88, 
+    height: 88, 
+    borderRadius: 44, 
     justifyContent: 'center', 
     alignItems: 'center',
     marginBottom: 25,
   },
   title: { 
-    fontSize: 22, 
+    fontSize: 24, 
     fontWeight: '900', 
-    letterSpacing: -1,
-    marginBottom: 15,
+    letterSpacing: 1.5,
+    marginBottom: 12,
     textAlign: 'center'
   },
+  messageStack: {
+    alignItems: 'center',
+    gap: 12,
+    marginBottom: 35,
+  },
   subtext: { 
-    fontSize: 14, 
+    fontSize: 15, 
     textAlign: 'center', 
     lineHeight: 22,
-    marginBottom: 35,
-    fontWeight: '600'
+    fontWeight: '600',
+    paddingHorizontal: 10
+  },
+  safetyBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 12,
+  },
+  safetyText: {
+    fontSize: 10,
+    fontWeight: '900',
+    letterSpacing: 1,
   },
   bold: { fontWeight: '900' },
   actionBtn: { 
@@ -140,10 +179,10 @@ const styles = StyleSheet.create({
     alignItems: 'center', 
     justifyContent: 'center', 
     gap: 12, 
-    paddingVertical: 20, 
-    borderRadius: 22,
+    height: 72,
+    borderRadius: 24,
   },
-  btnText: { fontSize: 12, fontWeight: '900', letterSpacing: 1.5 },
-  closeBtn: { marginTop: 25 },
-  closeText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 }
+  btnText: { fontSize: 13, fontWeight: '900', letterSpacing: 1 },
+  closeBtn: { marginTop: 25, padding: 10 },
+  closeText: { fontSize: 11, fontWeight: '900', letterSpacing: 1, opacity: 0.6 }
 });

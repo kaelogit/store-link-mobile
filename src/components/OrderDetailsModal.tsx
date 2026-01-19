@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, TouchableOpacity, ScrollView, 
-  ActivityIndicator, Alert, Dimensions, Image, Linking 
+  ActivityIndicator, Alert, Dimensions, Image 
 } from 'react-native';
 import { 
   X, CheckCircle2, MessageSquare, Clock, 
-  CreditCard, XCircle, ShieldCheck, Package, ExternalLink 
+  CreditCard, XCircle, Truck, PackageCheck, Gem
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -27,9 +27,9 @@ interface OrderDetailsProps {
 }
 
 /**
- * 🏰 ORDER DETAILS v95.0
- * Fixed: Replaced username with slug in buyer profile data.
- * Language: Removed technical jargon for human-friendly commerce.
+ * 🏰 ORDER DETAILS v97.0
+ * Purpose: A clear view for tracking order progress and managing sales.
+ * Logic: Updates order status and automatically syncs with the chat deal status.
  */
 export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchantView = false }: OrderDetailsProps) => {
   const router = useRouter();
@@ -53,41 +53,14 @@ export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchant
     setLoading(false);
   };
 
-  /** 🛡️ WHATSAPP BRIDGE */
-  const handleWhatsAppCheckout = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // Fetch merchant details for contact
-    const { data: merchant } = await supabase
-      .from('profiles')
-      .select('whatsapp_number, display_name')
-      .eq('id', order.seller_id)
-      .single();
-
-    if (!merchant?.whatsapp_number) {
-      return Alert.alert("Error", "This merchant hasn't linked a WhatsApp number.");
-    }
-
-    const manifest = items.map(i => `${i.quantity}x ${i.product_name}`).join('\n');
-    const message = `STORELINK ORDER #${order.id.slice(0,8)}\n\nHello ${merchant.display_name},\nI'm finalizing my order for:\n${manifest}\n\nTotal: ₦${order.total_amount.toLocaleString()}`;
-    
-    const url = `whatsapp://send?phone=${merchant.whatsapp_number}&text=${encodeURIComponent(message)}`;
-    
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (supported) await Linking.openURL(url);
-      else await Linking.openURL(`https://wa.me/${merchant.whatsapp_number}?text=${encodeURIComponent(message)}`);
-    } catch (e) {
-      Alert.alert("Error", "Could not open WhatsApp. Please make sure it is installed.");
-    }
-  };
-
+  /** 🛡️ UPDATE PROCESS */
   const handleUpdateStatus = async (newStatus: string, hapticStyle: Haptics.ImpactFeedbackStyle = Haptics.ImpactFeedbackStyle.Medium) => {
     setProcessing(true);
     Haptics.impactAsync(hapticStyle);
     
     try {
-      const { error } = await supabase
+      // 1. Update the official Order Record
+      const { error: orderError } = await supabase
         .from("orders")
         .update({ 
           status: newStatus, 
@@ -95,13 +68,19 @@ export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchant
         })
         .eq('id', order.id);
 
-      if (error) throw error;
+      if (orderError) throw orderError;
+
+      // 2. Sync with the conversation status
+      await supabase
+        .from('conversations')
+        .update({ deal_status: newStatus })
+        .eq('order_id', order.id);
       
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       onUpdate();
       onClose();
     } catch (e: any) {
-      Alert.alert("Error", "Failed to update order status. Please try again.");
+      Alert.alert("Error", "Failed to update the order status.");
     } finally {
       setProcessing(false);
     }
@@ -109,9 +88,12 @@ export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchant
 
   if (!isOpen || !order) return null;
 
+  const status = order.status || 'pending';
+  const merchantIsDiamond = order.merchant?.subscription_plan === 'diamond';
+
   const renderActions = () => {
     if (isMerchantView) {
-      if (order.status === 'pending') {
+      if (status === 'pending') {
         return (
           <View style={styles.actionColumn}>
             <ActionButton label="CONFIRM PAYMENT" color={theme.text} icon={CheckCircle2} onPress={() => handleUpdateStatus('confirmed')} theme={theme} />
@@ -122,13 +104,13 @@ export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchant
           </View>
         );
       }
+      if (status === 'confirmed') {
+        return <ActionButton label="MARK AS SENT" color={Colors.brand.emerald} icon={Truck} onPress={() => handleUpdateStatus('delivered')} theme={theme} />;
+      }
       return null;
     } else {
-      if (order.status === 'pending') {
-        return <ActionButton label="NEGOTIATE ON WHATSAPP" color="#25D366" icon={ExternalLink} onPress={handleWhatsAppCheckout} theme={theme} />;
-      }
-      if (order.status === 'confirmed') {
-        return <ActionButton label="ORDER RECEIVED" color={Colors.brand.emerald} icon={ShieldCheck} onPress={() => handleUpdateStatus('completed', Haptics.ImpactFeedbackStyle.Heavy)} theme={theme} />;
+      if (status === 'delivered') {
+        return <ActionButton label="CONFIRM DELIVERY" color={Colors.brand.emerald} icon={PackageCheck} onPress={() => handleUpdateStatus('completed', Haptics.ImpactFeedbackStyle.Heavy)} theme={theme} />;
       }
       return null;
     }
@@ -139,7 +121,7 @@ export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchant
       <TouchableOpacity activeOpacity={1} style={styles.backdrop} onPress={onClose} />
       <View style={[styles.sheet, { backgroundColor: theme.background }]}>
         <View style={[styles.header, { borderBottomColor: theme.surface }]}>
-          <TouchableOpacity onPress={() => router.push(`/chat/${isMerchantView ? order.user_id : order.seller_id}`)} style={styles.chatLink}>
+          <TouchableOpacity onPress={() => { onClose(); router.push(`/chat/${order.id}` as any); }} style={styles.chatLink}>
             <MessageSquare size={20} color={Colors.brand.emerald} strokeWidth={2.5} />
             <Text style={[styles.chatLinkText, { color: Colors.brand.emerald }]}>CHAT</Text>
           </TouchableOpacity>
@@ -150,23 +132,32 @@ export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchant
         </View>
 
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {/* PROGRESS STEPS */}
+          {/* 🛡️ PROGRESS TRACKER */}
           <View style={styles.stepperContainer}>
             <Step active={true} label="Ordered" icon={Clock} theme={theme} />
-            <Line active={['confirmed', 'completed'].includes(order.status)} theme={theme} />
-            <Step active={['confirmed', 'completed'].includes(order.status)} label="Paid" icon={CreditCard} theme={theme} />
-            <Line active={['completed'].includes(order.status)} theme={theme} />
-            <Step active={['completed'].includes(order.status)} label="Received" icon={Package} theme={theme} />
+            <Line active={['confirmed', 'delivered', 'completed'].includes(status)} theme={theme} />
+            <Step active={['confirmed', 'delivered', 'completed'].includes(status)} label="Paid" icon={CreditCard} theme={theme} />
+            <Line active={['delivered', 'completed'].includes(status)} theme={theme} />
+            <Step active={['delivered', 'completed'].includes(status)} label="Sent" icon={Truck} theme={theme} />
+            <Line active={['completed'].includes(status)} theme={theme} />
+            <Step active={['completed'].includes(status)} label="Done" icon={PackageCheck} theme={theme} />
           </View>
 
           <View style={[styles.infoCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-             <Text style={[styles.sectionLabel, { color: theme.text }]}>ORDER DETAILS</Text>
-             {/* 🛡️ DATA FIX: username -> slug */}
-             <InfoRow label={isMerchantView ? "BUYER" : "BRAND"} value={isMerchantView ? `@${order.buyer?.slug?.toUpperCase()}` : order.merchant?.display_name} theme={theme} />
+             <Text style={[styles.sectionLabel, { color: theme.text }]}>ORDER SUMMARY</Text>
+             <View style={styles.partnerRow}>
+               <Text style={[styles.infoLabel, { color: theme.subtext }]}>{isMerchantView ? "BUYER" : "STORE"}</Text>
+               <View style={styles.partnerInfo}>
+                 <Text style={[styles.infoValue, { color: theme.text }]}>
+                   {isMerchantView ? `@${order.buyer?.slug?.toUpperCase()}` : order.merchant?.display_name?.toUpperCase()}
+                 </Text>
+                 {merchantIsDiamond && !isMerchantView && <Gem size={10} color="#8B5CF6" fill="#8B5CF6" style={{marginLeft: 4}} />}
+               </View>
+             </View>
              <InfoRow label="ORDER ID" value={`#${order.id.slice(0,12).toUpperCase()}`} theme={theme} />
           </View>
 
-          <Text style={[styles.sectionLabel, { color: theme.text }]}>ITEMS IN ORDER</Text>
+          <Text style={[styles.sectionLabel, { color: theme.text }]}>ITEMS ORDERED</Text>
           {loading ? <ActivityIndicator color={Colors.brand.emerald} /> : (
             <View style={styles.itemsList}>
               {items.map((item, idx) => (
@@ -184,7 +175,7 @@ export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchant
 
           <View style={[styles.totalSection, { borderTopColor: theme.surface }]}>
             <View style={styles.totalRow}>
-              <Text style={styles.grandLabel}>TOTAL AMOUNT</Text>
+              <Text style={styles.grandLabel}>TOTAL PRICE</Text>
               <Text style={[styles.grandVal, { color: theme.text }]}>₦{order.total_amount.toLocaleString()}</Text>
             </View>
             
@@ -194,13 +185,13 @@ export const OrderDetailsModal = ({ order, isOpen, onClose, onUpdate, isMerchant
               ) : (
                 <>
                   {renderActions()}
-                  {order.status === 'completed' && (
+                  {status === 'completed' && (
                     <View style={[styles.completedBadge, { borderColor: Colors.brand.emerald }]}>
                        <CheckCircle2 color={Colors.brand.emerald} size={20} strokeWidth={3} />
                        <Text style={[styles.completedText, { color: Colors.brand.emerald }]}>ORDER COMPLETED</Text>
                     </View>
                   )}
-                  {order.status === 'cancelled' && (
+                  {status === 'cancelled' && (
                     <View style={[styles.completedBadge, { borderColor: '#EF4444' }]}>
                        <XCircle color="#EF4444" size={20} strokeWidth={3} />
                        <Text style={[styles.completedText, { color: '#EF4444' }]}>ORDER CANCELLED</Text>
@@ -239,8 +230,8 @@ const InfoRow = ({ label, value, theme }: any) => (
 
 const ActionButton = ({ label, color, icon: Icon, onPress, theme }: any) => (
   <TouchableOpacity style={[styles.mainBtn, { backgroundColor: color }]} onPress={onPress}>
-    <Icon size={18} color={color === theme.text || color === '#25D366' ? theme.background : 'white'} strokeWidth={3} />
-    <Text style={[styles.btnTextWhite, { color: color === theme.text || color === '#25D366' ? theme.background : 'white' }]}>{label}</Text>
+    <Icon size={18} color={color === theme.text ? theme.background : 'white'} strokeWidth={3} />
+    <Text style={[styles.btnTextWhite, { color: color === theme.text ? theme.background : 'white' }]}>{label}</Text>
   </TouchableOpacity>
 );
 
@@ -254,12 +245,14 @@ const styles = StyleSheet.create({
   closeBtn: { padding: 8, borderRadius: 12 },
   content: { padding: 25 },
   stepperContainer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginBottom: 40 },
-  stepBox: { alignItems: 'center', width: 70 },
+  stepBox: { alignItems: 'center', width: 60 },
   stepCircle: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   stepLabel: { fontSize: 7, fontWeight: '900', textTransform: 'uppercase' },
-  stepLine: { flex: 1, height: 2, marginBottom: 20, marginHorizontal: -15 },
+  stepLine: { flex: 1, height: 2, marginBottom: 20, marginHorizontal: -10 },
   infoCard: { borderRadius: 24, padding: 20, marginBottom: 30, borderWidth: 1 },
   infoRow: { borderBottomWidth: 1, paddingVertical: 12 },
+  partnerRow: { borderBottomWidth: 1, paddingVertical: 12 },
+  partnerInfo: { flexDirection: 'row', alignItems: 'center' },
   infoLabel: { fontSize: 8, fontWeight: '900', marginBottom: 4, letterSpacing: 1 },
   infoValue: { fontSize: 13, fontWeight: '800' },
   sectionLabel: { fontSize: 10, fontWeight: '900', marginBottom: 15, letterSpacing: 1.2 },
@@ -280,6 +273,5 @@ const styles = StyleSheet.create({
   cancelBtn: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 6, paddingVertical: 10 },
   cancelText: { color: '#EF4444', fontSize: 10, fontWeight: '900' },
   completedBadge: { height: 64, borderRadius: 20, borderStyle: 'dashed', borderWidth: 2, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 10 },
-  completedText: { fontWeight: '900', fontSize: 11, letterSpacing: 1 },
-  footerBrand: { textAlign: 'center', marginTop: 40, fontSize: 8, fontWeight: '900', letterSpacing: 2, opacity: 0.3 }
+  completedText: { fontWeight: '900', fontSize: 11, letterSpacing: 1 }
 });

@@ -1,11 +1,11 @@
-import React, { useState } from 'react';
-import { Modal, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import React, { useState, useMemo } from 'react';
+import { Modal, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { WebView } from 'react-native-webview';
-import { X, Lock, ShieldCheck } from 'lucide-react-native';
+import { X, Lock, ShieldAlert, CreditCard } from 'lucide-react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 
-// 🏛️ Sovereign Components
+// App Connection
 import { View, Text } from './Themed';
 import Colors from '../constants/Colors';
 import { useColorScheme } from './useColorScheme';
@@ -20,44 +20,47 @@ interface PaystackProps {
 }
 
 /**
- * 🏰 PAYMENT TERMINAL v21.6 (Pure Build)
- * Audited: Section VI Economic Validation & Encrypted Handshake.
+ * 🏰 PAYMENT TERMINAL v23.0
+ * Purpose: A secure checkout interface using Paystack's hosted gateway.
+ * Logic: Monitors navigation states to detect successful payment references.
  */
 export const PaystackTerminal = ({ isOpen, onClose, onSuccess, email, amount, metadata }: PaystackProps) => {
   const [isVerifying, setIsVerifying] = useState(false);
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
 
-  // 🛡️ GATEWAY CONFIG
-  const publicKey = "pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"; 
+  // 🛡️ SECURITY CONFIGURATION
+  // Note: It is best practice to pull this from your .env file
+  const publicKey = process.env.EXPO_PUBLIC_PAYSTACK_PUBLIC_KEY || "pk_live_xxxxxxxxxxxx"; 
   
-  const params = [
-    `email=${encodeURIComponent(email)}`,
-    `amount=${amount * 100}`, // Paystack amount is in kobo
-    `metadata=${encodeURIComponent(JSON.stringify(metadata))}`
-  ].join('&');
-
-  const checkoutUrl = `https://checkout.paystack.com/${publicKey}?${params}`;
-
-  /**
-   * 📡 STATUS MONITOR
-   * Detects the redirect from the payment gateway to finalize the transaction.
-   */
-  const handleNavigationChange = (state: any) => {
-    const isSuccess = state.url.includes('callback') || state.url.includes('success') || state.url.includes('trxref');
+  const checkoutUrl = useMemo(() => {
+    const params = [
+      `key=${publicKey}`,
+      `email=${encodeURIComponent(email)}`,
+      `amount=${amount * 100}`, // Conversion to Kobo/Cents
+      `metadata=${encodeURIComponent(JSON.stringify(metadata))}`,
+      `callback_url=https://standard.paystack.co/close`, 
+    ].join('&');
     
-    if (isSuccess && !isVerifying) {
-      const urlParts = state.url.split('?');
-      if (urlParts.length > 1) {
-        // Simple regex fallback for URLSearchParams in all environments
-        const refMatch = state.url.match(/[?&](?:reference|trxref)=([^&]+)/);
-        const reference = refMatch ? refMatch[1] : null;
-        
-        if (reference) {
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-          setIsVerifying(true); 
-          onSuccess(reference);
-        }
+    return `https://checkout.paystack.com/0.1/?${params}`;
+  }, [email, amount, metadata, publicKey]);
+
+  /** 📡 PAYMENT MONITOR */
+  const handleNavigationChange = (state: any) => {
+    // Detect successful payment reference in the URL
+    const hasRef = state.url.includes('trxref') || state.url.includes('reference');
+    const isClosed = state.url.includes('close') || state.url.includes('callback');
+    
+    if ((hasRef || isClosed) && !isVerifying) {
+      const refMatch = state.url.match(/[?&](?:reference|trxref)=([^&]+)/);
+      const reference = refMatch ? refMatch[1] : null;
+      
+      if (reference) {
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        setIsVerifying(true); 
+        onSuccess(reference);
+      } else if (isClosed) {
+        onClose();
       }
     }
   };
@@ -67,41 +70,56 @@ export const PaystackTerminal = ({ isOpen, onClose, onSuccess, email, amount, me
   return (
     <Modal visible={isOpen} animationType="slide" transparent={false} onRequestClose={onClose}>
       <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
-        {/* 🔒 SECURITY HEADER */}
+        
+        {/* 🔒 HEADER */}
         <View style={[styles.header, { borderBottomColor: theme.surface }]}>
-          <View style={[styles.securityIndicator, { backgroundColor: Colors.brand.emerald + '15' }]}>
-            <Lock size={12} color={Colors.brand.emerald} strokeWidth={3} />
-            <Text style={[styles.securityText, { color: Colors.brand.emerald }]}>SECURE PAYMENT</Text>
+          <View style={styles.headerLeft}>
+            <View style={[styles.securityIndicator, { backgroundColor: Colors.brand.emerald + '12' }]}>
+              <Lock size={12} color={Colors.brand.emerald} strokeWidth={3} />
+              <Text style={[styles.securityText, { color: Colors.brand.emerald }]}>SECURE CHECKOUT</Text>
+            </View>
           </View>
-          <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: theme.surface }]} disabled={isVerifying}>
+          
+          <TouchableOpacity 
+            onPress={onClose} 
+            style={[styles.closeBtn, { backgroundColor: theme.surface }]} 
+            disabled={isVerifying}
+          >
             <X color={theme.text} size={22} strokeWidth={3} />
           </TouchableOpacity>
         </View>
         
-        {isVerifying ? (
-          <View style={[styles.centered, { backgroundColor: 'transparent' }]}>
-             <ActivityIndicator color={Colors.brand.emerald} size="large" />
-             <Text style={[styles.statusText, { color: theme.text }]}>CONFIRMING PAYMENT...</Text>
-          </View>
-        ) : (
-          <WebView 
-            source={{ uri: checkoutUrl }}
-            onNavigationStateChange={handleNavigationChange}
-            startInLoadingState={true}
-            style={{ flex: 1 }}
-            renderLoading={() => (
-              <View style={[styles.loader, { backgroundColor: theme.background }]}>
-                <ActivityIndicator color={Colors.brand.emerald} size="large" />
-                <Text style={[styles.loaderText, { color: theme.subtext }]}>CONNECTING TO PAYSTACK...</Text>
+        <View style={styles.content}>
+          {isVerifying ? (
+            <View style={styles.centered}>
+              <View style={styles.verifyingHalo}>
+                 <ActivityIndicator color={Colors.brand.emerald} size="large" />
               </View>
-            )}
-          />
-        )}
+              <Text style={[styles.statusText, { color: theme.text }]}>VERIFYING TRANSACTION...</Text>
+              <Text style={[styles.subStatusText, { color: theme.subtext }]}>Please do not close this screen.</Text>
+            </View>
+          ) : (
+            <WebView 
+              source={{ uri: checkoutUrl }}
+              onNavigationStateChange={handleNavigationChange}
+              startInLoadingState={true}
+              scalesPageToFit={true}
+              style={{ flex: 1, backgroundColor: theme.background }}
+              renderLoading={() => (
+                <View style={[styles.loader, { backgroundColor: theme.background }]}>
+                  <CreditCard size={40} color={theme.border} style={{ marginBottom: 20 }} />
+                  <ActivityIndicator color={Colors.brand.emerald} size="large" />
+                  <Text style={[styles.loaderText, { color: theme.subtext }]}>LOADING SECURE GATEWAY...</Text>
+                </View>
+              )}
+            />
+          )}
+        </View>
 
         {/* 🛡️ FOOTER */}
-        <View style={[styles.footer, { borderTopColor: theme.surface }]}>
-           <ShieldCheck size={14} color={theme.border} />
-           <Text style={[styles.footerText, { color: theme.border }]}>ENCRYPTED TRANSACTION</Text>
+        <View style={[styles.footer, { borderTopColor: theme.surface, paddingBottom: Platform.OS === 'ios' ? 20 : 30 }]}>
+           <ShieldAlert size={14} color={theme.subtext} />
+           <Text style={[styles.footerText, { color: theme.subtext }]}>SECURE ENCRYPTED PAYMENT</Text>
         </View>
       </SafeAreaView>
     </Modal>
@@ -110,21 +128,25 @@ export const PaystackTerminal = ({ isOpen, onClose, onSuccess, email, amount, me
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
+  content: { flex: 1 },
   header: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
     paddingHorizontal: 20, 
-    paddingVertical: 15,
+    paddingVertical: 18,
     borderBottomWidth: 1.5,
   },
-  securityIndicator: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 10 },
-  securityText: { fontSize: 9, fontWeight: '900', letterSpacing: 1 },
-  closeBtn: { width: 40, height: 40, justifyContent: 'center', alignItems: 'center', borderRadius: 12 },
-  loader: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', gap: 15 },
-  loaderText: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', gap: 20 },
-  statusText: { fontSize: 12, fontWeight: '900', letterSpacing: 1.5 },
-  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 20, borderTopWidth: 1.5 },
-  footerText: { fontSize: 9, fontWeight: '800', letterSpacing: 1 }
+  headerLeft: { flexDirection: 'row', alignItems: 'center' },
+  securityIndicator: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
+  securityText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  closeBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 14 },
+  loader: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center' },
+  loaderText: { fontSize: 9, fontWeight: '900', letterSpacing: 2, marginTop: 20 },
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 40 },
+  verifyingHalo: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginBottom: 25 },
+  statusText: { fontSize: 14, fontWeight: '900', letterSpacing: 1.5, textAlign: 'center' },
+  subStatusText: { fontSize: 11, fontWeight: '700', marginTop: 8, opacity: 0.5 },
+  footer: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingTop: 20, borderTopWidth: 1.5 },
+  footerText: { fontSize: 9, fontWeight: '900', letterSpacing: 1 }
 });

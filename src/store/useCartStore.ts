@@ -2,19 +2,19 @@ import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// 🏛️ Registry Imports
+// Project Imports
 import { Product, SellerMinimal } from '../types';
 
 /**
- * 🏰 EMPIRE CART STORE v78.7 (Pure Build)
- * Audited: Section IV Commercial Registry & Section VI 5% Empire Rule.
- * Compliance: Manifest v78.5 Sovereign Negotiation Alignment.
+ * 🛒 CART STORE v79.0
+ * Purpose: Manages the shopping bag, item quantities, and coin discounts.
+ * Logic: Simple English for clear developer communication.
  */
 
 interface CartItem {
-  product: Product;      // Mapped to Hardened Asset Registry
-  seller: SellerMinimal; // Mapped to Hardened Identity Layer
-  qty: number;
+  product: Product;      // The item being bought
+  seller: SellerMinimal; // The shop selling the item
+  qty: number;           // Quantity
 }
 
 interface CartTotals {
@@ -35,7 +35,7 @@ interface CartState {
   clearCart: () => void;
   setUseCoins: (val: boolean) => void;
   
-  // Selectors
+  // Helpers
   getCartTotals: (userCoinBalance: number) => CartTotals;
   getGroupedCart: () => Record<string, { seller: SellerMinimal, items: CartItem[] }>;
 }
@@ -47,8 +47,8 @@ export const useCartStore = create<CartState>()(
       useCoins: false,
 
       /**
-       * ⚡ ADD TO REGISTRY
-       * Synchronizes the product asset with its Merchant's trade identity.
+       * ➕ ADD ITEM TO BAG
+       * Increases the quantity if the item is already there.
        */
       addToCart: (product, seller) => {
         const currentCart = get().cart;
@@ -63,12 +63,19 @@ export const useCartStore = create<CartState>()(
         }
       },
 
+      /**
+       * ➖ REMOVE ITEM FROM BAG
+       */
       removeFromCart: (productId) => {
         set((state) => ({ 
             cart: state.cart.filter((item) => item.product.id !== productId) 
         }));
       },
 
+      /**
+       * 🔢 CHANGE QUANTITY
+       * Ensures the number of items never goes below 1.
+       */
       updateQty: (productId, amount) => {
         set((state) => ({
           cart: state.cart.map((item: CartItem) =>
@@ -79,31 +86,38 @@ export const useCartStore = create<CartState>()(
         }));
       },
 
+      /**
+       * 🧹 RESET BAG
+       */
       clearCart: () => set({ cart: [], useCoins: false }),
 
+      /**
+       * 🪙 TOGGLE COIN USAGE
+       */
       setUseCoins: (val) => set({ useCoins: val }),
 
       /**
-       * 🏛️ THE 5% EMPIRE RULE (Section VI)
-       * Ensures the economic ledger remains balanced.
-       * Rule: Coin usage is capped at 5% of the total trade value.
+       * 📊 CALCULATE TOTALS
+       * Rule: You can only use coins for up to 5% of the total price.
        */
       getCartTotals: (userCoinBalance) => {
         const { cart, useCoins } = get();
+        
+        // Calculate the base price of all items
         const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.qty), 0);
         const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
         
-        // 🛡️ Hard-coded 5% Margin Cap
-        const maxCoinUsage = Math.floor(subtotal * 0.05); 
-        const coinDiscount = useCoins ? Math.min(userCoinBalance, maxCoinUsage) : 0;
+        // Apply the 5% discount limit
+        const maxDiscount = Math.floor(subtotal * 0.05); 
+        const coinDiscount = useCoins ? Math.min(userCoinBalance, maxDiscount) : 0;
         const finalTotal = subtotal - coinDiscount;
 
         return { subtotal, cartCount, coinDiscount, finalTotal };
       },
 
       /**
-       * 🌪️ VORTEX GROUPING
-       * Organizes items by Seller ID for Sovereign Negotiation Handshakes.
+       * 📦 GROUP BY SHOP
+       * Sorts the items so they can be processed as separate orders for each seller.
        */
       getGroupedCart: () => {
         return get().cart.reduce((acc, item: CartItem) => {
@@ -117,7 +131,7 @@ export const useCartStore = create<CartState>()(
       },
     }),
     {
-      name: 'storelink-v78-cart',
+      name: 'storelink-v79-cart', // Updated versioning
       storage: createJSONStorage(() => AsyncStorage),
     }
   )

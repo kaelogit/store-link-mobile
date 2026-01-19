@@ -12,7 +12,12 @@
       "resizeMode": "contain",
       "backgroundColor": "#111827"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "ng.storelink.app",
@@ -21,8 +26,8 @@
         "applinks:*.storelink.ng"
       ],
       "infoPlist": {
-        "NSCameraUsageDescription": "StoreLink requires camera access for the Product Studio.",
-        "NSPhotoLibraryUsageDescription": "StoreLink requires gallery access to upload product assets."
+        "NSCameraUsageDescription": "StoreLink needs camera access so you can take photos of your products.",
+        "NSPhotoLibraryUsageDescription": "StoreLink needs gallery access so you can upload your product photos."
       }
     },
     "android": {
@@ -48,6 +53,11 @@
             }
           ]
         }
+      ],
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA"
       ]
     },
     "web": {
@@ -61,8 +71,8 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow StoreLink to use the camera to verify your identity.",
-          "microphonePermission": "Allow StoreLink to use the microphone for cinematic reels."
+          "cameraPermission": "Allow StoreLink to use the camera for product photos.",
+          "microphonePermission": "Allow StoreLink to use the microphone for your video reels."
         }
       ],
       [
@@ -79,7 +89,7 @@
         "origin": "https://storelink.ng"
       },
       "eas": {
-        "projectId": "your-eas-project-id"
+        "projectId": "d07b455a-520b-48fb-b718-d1b7634cb2af"
       }
     }
   }

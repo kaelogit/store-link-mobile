@@ -4,8 +4,9 @@ import { useUserStore } from '../store/useUserStore';
 import * as Haptics from 'expo-haptics';
 
 /**
- * 🏰 SECURE CHAT HOOK v89.1 (Pure Build)
- * Audited: Section VII Messaging Governance & Real-Time Sync.
+ * 🏰 CHAT HOOK v90.0
+ * Purpose: Manages real-time messaging, message history, and instant sending.
+ * Features: Automatic updates when new messages arrive and smooth haptic feedback.
  */
 export const useChat = (conversationId: string) => {
   const [messages, setMessages] = useState<any[]>([]);
@@ -14,7 +15,7 @@ export const useChat = (conversationId: string) => {
   const { profile: currentUser } = useUserStore();
   const isMounted = useRef(true);
 
-  // 🏛️ LIVE SYNC: Hydration & Real-Time Subscription
+  // 🏛️ LIVE SYNC: Loading history and listening for new messages
   useEffect(() => {
     isMounted.current = true;
     
@@ -36,7 +37,7 @@ export const useChat = (conversationId: string) => {
         if (error) throw error;
         if (isMounted.current) setMessages(data || []);
       } catch (e) {
-        console.error("Chat Sync Failure:", e);
+        console.error("Failed to load messages:", e);
       } finally {
         if (isMounted.current) setLoading(false);
       }
@@ -44,7 +45,7 @@ export const useChat = (conversationId: string) => {
 
     fetchMessages();
 
-    // ⚡ REAL-TIME VORTEX: Listen for incoming signals
+    // ⚡ REAL-TIME SUBSCRIPTION: Listen for new incoming messages
     const channel = supabase
       .channel(`chat_sync:${conversationId}`)
       .on('postgres_changes', { 
@@ -55,11 +56,11 @@ export const useChat = (conversationId: string) => {
       }, (payload) => {
         if (isMounted.current) {
           setMessages((prev) => {
-            // 🛡️ DEDUPLICATION GATE
+            // Check if message already exists to prevent duplicates
             const exists = prev.some(m => m.id === payload.new.id);
             if (exists) return prev;
             
-            // ⚡ TACTILE FEEDBACK: Incoming signal notification
+            // Vibration feedback for new messages from others
             if (payload.new.sender_id !== currentUser?.id) {
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             }
@@ -77,8 +78,8 @@ export const useChat = (conversationId: string) => {
   }, [conversationId, currentUser?.id]);
 
   /**
-   * 📤 INSTANT SEND (Optimistic Dispatch)
-   * Updates UI immediately and syncs with the database in the background.
+   * 📤 SEND MESSAGE
+   * Logic: Updates the screen instantly while the message saves in the background.
    */
   const sendMessage = useCallback(async (text: string, imageUrl?: string) => {
     if (!text.trim() && !imageUrl) return;
@@ -87,7 +88,7 @@ export const useChat = (conversationId: string) => {
     setSending(true);
     const tempId = `temp_${Math.random().toString(36).substring(7)}`;
     
-    const optimisticMessage = {
+    const instantMessage = {
       id: tempId,
       conversation_id: conversationId,
       sender_id: currentUser.id,
@@ -98,8 +99,8 @@ export const useChat = (conversationId: string) => {
       is_optimistic: true 
     };
 
-    // ⚡ Instant UI Update
-    setMessages(prev => [...prev, optimisticMessage]);
+    // ⚡ Update UI immediately
+    setMessages(prev => [...prev, instantMessage]);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
     try {
@@ -114,7 +115,7 @@ export const useChat = (conversationId: string) => {
 
       if (error) throw error;
       
-      // Update Conversation Metadata (Manifest VII)
+      // Update the main conversation preview text
       await supabase
         .from('conversations')
         .update({ 
@@ -124,7 +125,7 @@ export const useChat = (conversationId: string) => {
         .eq('id', conversationId);
 
     } catch (e) {
-      // 🔄 ROLLBACK on failure
+      // Remove the message if it failed to send
       setMessages(prev => prev.filter(m => m.id !== tempId));
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     } finally {

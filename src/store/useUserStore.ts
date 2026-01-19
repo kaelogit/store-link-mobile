@@ -4,9 +4,9 @@ import { User } from '@supabase/supabase-js';
 import { Profile } from '../types';
 
 /**
- * 🏰 USER IDENTITY STORE v78.9 (Pure Finality)
- * Audited: Section I Identity Layer & Realtime Registry Sync.
- * Fixed: Verification Flip-Back and Session Persistence Rupture.
+ * 🏰 USER DATA STORE v80.0
+ * Purpose: Manages user login status and profile information across the app.
+ * Features: Real-time profile updates and secure account verification tracking.
  */
 interface UserState {
   user: User | null;
@@ -24,13 +24,12 @@ export const useUserStore = create<UserState>((set, get) => ({
   loading: true,
 
   /**
-   * 🏎️ REFRESH IDENTITY REGISTRY
-   * Logic: Direct Database Probe to enforce Permanent Verification status.
-   * Manifest Alignment: v78.7 Identity Finality Enforcement.
+   * 🛡️ DATA REFRESH: Updates local profile data from the database.
+   * Logic: Validates the session and ensures account status is accurate.
    */
   refreshUserData: async () => {
     try {
-      // 🛡️ 1. AUTH PROBE (Server-side validation)
+      // 1. SESSION CHECK: Verify the user is still logged in
       const { data: { user }, error: authError } = await supabase.auth.getUser();
       
       if (authError || !user) {
@@ -38,8 +37,7 @@ export const useUserStore = create<UserState>((set, get) => ({
         return;
       }
 
-      // 🏛️ 2. DIRECT REGISTRY FETCH (Manifest Section I)
-      // We pull every field to ensure the UI has total Visual Authority.
+      // 2. PROFILE FETCH: Get the latest profile details
       const { data: profileData, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -47,47 +45,49 @@ export const useUserStore = create<UserState>((set, get) => ({
         .single();
 
       if (profileError) {
-        console.error("Registry Sync Failure:", profileError.message);
+        console.error("Profile update failed:", profileError.message);
         throw profileError;
       }
 
-      // 🛡️ 3. IDENTITY HYDRATION
-      // Ensures Prestige Weight, is_verified, and Category are locked in memory.
-      const hardenedProfile: Profile = { 
+      // 3. ACCOUNT SECURITY: Verify email and identity status separately
+      const updatedProfile: Profile = { 
         ...profileData, 
         email: user.email || profileData.email || "",
-        // Handle Duality: slug is now the unique username
         slug: profileData.slug, 
+        // Verification A: Confirms the email belongs to the user
         is_verified: profileData.is_verified === true,
-        onboarding_completed: profileData.onboarding_completed === true
+        // Verification B: Confirms the user's real-world identity
+        verification_status: profileData.verification_status,
+        onboarding_completed: profileData.onboarding_completed === true,
+        is_seller: profileData.is_seller === true
       };
 
       set({ 
         user,
-        profile: hardenedProfile, 
+        profile: updatedProfile, 
         loading: false 
       });
 
-      // 📡 4. ACTIVATE REALTIME SYNC
+      // 4. START LIVE UPDATES: Listen for changes while the app is open
       get().initializeProfileListener();
 
     } catch (error) {
-      console.error("Identity Registry Error:", error);
+      console.error("User data error:", error);
       set({ loading: false });
     }
   },
 
   /**
-   * 📡 LIVE REGISTRY MONITOR
-   * Listens for Prestige Weight, Coin Balance, or Verification updates.
+   * 📡 LIVE UPDATES: Automatically refreshes data if a change happens on the server.
+   * Useful for instant verification updates or role changes (e.g., becoming a seller).
    */
   initializeProfileListener: () => {
     const userId = get().user?.id;
     if (!userId) return;
 
-    const channelName = `identity_lock_${userId}`;
+    const channelName = `profile_updates_${userId}`;
     
-    // 🛡️ Purge stale channels to prevent ghost updates
+    // Remove old listeners to prevent bugs
     supabase.removeChannel(supabase.channel(channelName));
 
     supabase
@@ -101,25 +101,34 @@ export const useUserStore = create<UserState>((set, get) => ({
           filter: `id=eq.${userId}` 
         },
         (payload) => {
-          // 🛡️ ATOMIC SYNC: Direct update from the cryptographically verified DB change
-          const updatedProfile = payload.new as Profile;
+          // INSTANT SYNC: Update the screen immediately when the database changes
+          const updatedRaw = payload.new as any;
           
-          set((state) => ({
-            profile: state.profile ? { ...state.profile, ...updatedProfile } : updatedProfile
-          }));
+          set((state) => {
+            if (!state.profile) return state;
+
+            const syncedProfile: Profile = {
+              ...state.profile,
+              ...updatedRaw,
+              is_verified: updatedRaw.is_verified === true,
+              verification_status: updatedRaw.verification_status,
+              is_seller: updatedRaw.is_seller === true
+            };
+
+            return { profile: syncedProfile };
+          });
         }
       )
       .subscribe();
   },
 
   /**
-   * 🧹 REGISTRY CLEANUP
-   * Logic: Destroys session and unsubscribes from all identity channels.
+   * 🧹 LOGOUT CLEANUP: Clears all user data and stops live listeners.
    */
   clearUser: () => {
     const userId = get().user?.id;
     if (userId) {
-      const channelName = `identity_lock_${userId}`;
+      const channelName = `profile_updates_${userId}`;
       supabase.removeChannel(supabase.channel(channelName));
     }
 

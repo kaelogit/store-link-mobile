@@ -1,48 +1,56 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { 
-  View, Text, StyleSheet, FlatList, Image, 
-  TouchableOpacity, ActivityIndicator, Dimensions, Alert, RefreshControl 
+  View, Text, StyleSheet, FlatList, 
+  TouchableOpacity, ActivityIndicator, Dimensions, Alert, RefreshControl, Platform 
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { 
-  Trash2, ArrowLeft, 
-  BookmarkX, Zap, ShoppingCart
+  Trash2, ArrowLeft, BookmarkX, 
+  Zap, ShoppingBag, Gem
 } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
+import { Image } from 'expo-image';
 
-// 🏛️ Sovereign Components
+// 💎 SPEED ENGINE
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+
+// App Connection
 import { supabase } from '../../src/lib/supabase';
 import { useCartStore } from '../../src/store/useCartStore';
 import { useUserStore } from '../../src/store/useUserStore';
-import * as Haptics from 'expo-haptics';
 import { SellerMinimal, Product } from '../../src/types';
+import Colors from '../../src/constants/Colors';
+import { useColorScheme } from '../../src/components/useColorScheme';
 
 const { width } = Dimensions.get('window');
-const GRID_PADDING = 20;
-const COLUMN_GAP = 15;
-const COLUMN_WIDTH = (width - (GRID_PADDING * 2) - COLUMN_GAP) / 2;
-const IMAGE_HEIGHT = COLUMN_WIDTH * 1.25; // 🏛️ 4:5 CINEMATIC RATIO
+const COLUMN_WIDTH = (width - 55) / 2;
+const IMAGE_HEIGHT = COLUMN_WIDTH * 1.25; // 🏛️ 4:5 Aspect Ratio
 
 /**
- * 🏰 WISHLIST TERMINAL v78.6 (Pure Build)
- * Audited: Section IV Commercial Handshake & Section II Asset Geometry.
- * Resolved: TS2554 addToCart multi-argument requirement.
+ * 🏰 WISHLIST v80.0
+ * Purpose: A dedicated space for users to track items they want to buy.
+ * Logic: Fast loading with real-time stock updates.
+ * Features: One-tap "Add to Bag" and stock alerts for low inventory.
  */
 export default function WishlistScreen() {
   const router = useRouter();
+  const queryClient = useQueryClient();
+  const theme = Colors[useColorScheme() ?? 'light'];
+  
   const { addToCart } = useCartStore();
   const { profile } = useUserStore();
-  
-  const [items, setItems] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
 
-  const fetchWishlist = useCallback(async (isRefreshing = false) => {
-    if (!isRefreshing) setLoading(true);
-    if (!profile?.id) return;
-    
-    try {
-      // 📡 REGISTRY SYNC: Pulling saved drops with full Merchant DNA
+  /** 📡 DATA SYNC: Loading saved items */
+  const { 
+    data: items = [], 
+    isLoading, 
+    isRefetching, 
+    refetch 
+  } = useQuery({
+    queryKey: ['wishlist-list', profile?.id],
+    queryFn: async () => {
+      if (!profile?.id) return [];
       const { data, error } = await supabase
         .from('wishlist')
         .select(`
@@ -51,7 +59,7 @@ export default function WishlistScreen() {
           products:product_id (
             *,
             seller:seller_id (
-              id, display_name, logo_url, whatsapp_number
+              id, display_name, logo_url, whatsapp_number, subscription_plan
             )
           )
         `)
@@ -60,185 +68,182 @@ export default function WishlistScreen() {
 
       if (error) throw error;
 
-      if (data) {
-        const flatProducts = data
-          .filter((d: any) => d.products !== null)
-          .map((d: any) => ({
-            ...d.products,
-            wishlist_entry_id: d.id
-          }));
-          
-        setItems(flatProducts);
-      }
-    } catch (e: any) {
-      console.error("Wishlist Sync Error:", e.message);
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [profile?.id]);
+      return data
+        .filter((d: any) => d.products !== null)
+        .map((d: any) => ({
+          ...d.products,
+          wishlist_entry_id: d.id
+        })) as Product[];
+    },
+    staleTime: 1000 * 60 * 5,
+  });
 
-  useEffect(() => {
-    fetchWishlist();
-  }, [fetchWishlist]);
-
-  const onRefresh = () => {
-    setRefreshing(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    fetchWishlist(true);
-  };
-
-  const removeItem = async (productId: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    
-    // 🛡️ OPTIMISTIC PURGE
-    const backupItems = [...items];
-    setItems(prev => prev.filter(item => item.id !== productId));
-
-    try {
+  /** 🛡️ REMOVE ITEM PROCESS */
+  const removeMutation = useMutation({
+    mutationFn: async (productId: string) => {
       const { error } = await supabase
         .from('wishlist')
         .delete()
         .eq('user_id', profile?.id)
         .eq('product_id', productId);
-
       if (error) throw error;
-    } catch (e) {
-      setItems(backupItems);
-      Alert.alert("Registry Failure", "Could not remove item from monitoring.");
+    },
+    onMutate: async (productId) => {
+      await queryClient.cancelQueries({ queryKey: ['wishlist-list', profile?.id] });
+      const previous = queryClient.getQueryData(['wishlist-list', profile?.id]);
+      queryClient.setQueryData(['wishlist-list', profile?.id], (old: any) => 
+        old?.filter((item: any) => item.id !== productId)
+      );
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      return { previous };
+    },
+    onError: (err, productId, context) => {
+      queryClient.setQueryData(['wishlist-list', profile?.id], context?.previous);
+      Alert.alert("Error", "Could not remove item.");
     }
-  };
+  });
 
-  /**
-   * 🛡️ COMMERCIAL HANDSHAKE (Section IV)
-   * Restores the required Seller context for sovereign logistics negotiation.
-   */
   const handleQuickAdd = (item: Product) => {
     if (!item.seller) return;
-
     const sellerContext: SellerMinimal = {
       id: item.seller_id,
-      display_name: item.seller.display_name || 'Merchant',
+      display_name: item.seller.display_name || 'Store',
       logo_url: item.seller.logo_url || '',
     };
-
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     addToCart(item, sellerContext);
   };
 
-  if (loading && !refreshing) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator color="#10B981" size="large" />
-      </View>
-    );
-  }
+  if (isLoading && items.length === 0) return (
+    <View style={styles.centered}>
+      <ActivityIndicator color={Colors.brand.emerald} size="large" />
+      <Text style={styles.loaderText}>LOADING WISHLIST...</Text>
+    </View>
+  );
 
   return (
-    <SafeAreaView style={styles.container} edges={['top']}>
-      {/* 🏛️ HEADER */}
-      <View style={styles.header}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={24} color="#111827" strokeWidth={2.5} />
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      {/* HEADER */}
+      <View style={[styles.header, { borderBottomColor: theme.surface }]}>
+        <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: theme.surface }]}>
+          <ArrowLeft size={24} color={theme.text} strokeWidth={2.5} />
         </TouchableOpacity>
-        <View>
-          <Text style={styles.title}>WISHLIST</Text>
-          <Text style={styles.subtitle}>{items.length} DROPS MONITORED</Text>
+        <View style={styles.headerInfo}>
+          <Text style={[styles.title, { color: theme.text }]}>WISHLIST</Text>
+          <Text style={[styles.subtitle, { color: Colors.brand.emerald }]}>{items.length} ITEMS SAVED</Text>
         </View>
       </View>
 
       <FlatList
         data={items}
         numColumns={2}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10B981" />}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.gridContent}
+        keyExtractor={(item) => `wish-${item.id}`}
+        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.brand.emerald} />}
+        contentContainerStyle={[styles.gridContent, { paddingBottom: 120 }]}
         columnWrapperStyle={styles.gridRow}
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={
           <View style={styles.emptyState}>
-            <View style={styles.emptyCircle}>
-               <BookmarkX size={40} color="#D1D5DB" strokeWidth={1.5} />
+            <View style={[styles.emptyCircle, { backgroundColor: theme.surface }]}>
+               <BookmarkX size={44} color={theme.border} strokeWidth={1.5} />
             </View>
-            <Text style={styles.emptyTitle}>Registry Empty</Text>
-            <Text style={styles.emptySub}>Save elite drops from the feed to monitor availability and stock urgency.</Text>
-            <TouchableOpacity 
-               style={styles.shopBtn} 
-               onPress={() => router.push('/(tabs)')}
-            >
-              <Text style={styles.shopBtnText}>BROWSE VORTEX</Text>
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>Your Wishlist is Empty</Text>
+            <Text style={[styles.emptySub, { color: theme.subtext }]}>
+                Save items you love from the feed to keep track of their price and availability.
+            </Text>
+            <TouchableOpacity style={[styles.shopBtn, { backgroundColor: theme.text }]} onPress={() => router.push('/(tabs)')}>
+              <Text style={[styles.shopBtnText, { color: theme.background }]}>START SHOPPING</Text>
             </TouchableOpacity>
           </View>
         }
-        renderItem={({ item }) => (
-          <View style={styles.wishItem}>
-            <TouchableOpacity 
-              activeOpacity={0.9} 
-              onPress={() => router.push(`/product/${item.id}`)}
-              style={styles.imageBox}
-            >
-              <Image source={{ uri: item.image_urls?.[0] }} style={styles.itemImage} />
-              
+        renderItem={({ item }) => {
+          const isDiamond = item.seller?.subscription_plan === 'diamond';
+          const isLowStock = item.stock_quantity > 0 && item.stock_quantity < 5;
+          
+          return (
+            <View style={styles.wishItem}>
               <TouchableOpacity 
-                style={styles.removeBtn} 
-                onPress={() => removeItem(item.id)}
+                activeOpacity={0.9} 
+                onPress={() => router.push(`/product/${item.id}`)}
+                style={[styles.imageBox, { borderColor: theme.border }]}
               >
-                <Trash2 size={16} color="#EF4444" strokeWidth={2.5} />
+                <Image 
+                  source={item.image_urls?.[0]} 
+                  style={styles.itemImage} 
+                  contentFit="cover"
+                  transition={200}
+                />
+                
+                <TouchableOpacity 
+                  style={[styles.removeBtn, { backgroundColor: theme.background + 'CC' }]} 
+                  onPress={() => removeMutation.mutate(item.id)}
+                >
+                  <Trash2 size={16} color="#EF4444" strokeWidth={2.5} />
+                </TouchableOpacity>
+
+                {isLowStock && (
+                  <View style={styles.lowStockBadge}>
+                    <Zap size={10} color="white" fill="white" />
+                    <Text style={styles.lowStockText}>LOW STOCK</Text>
+                  </View>
+                )}
               </TouchableOpacity>
 
-              {/* ⚡ STOCK INTELLIGENCE */}
-              {item.stock_quantity > 0 && item.stock_quantity < 5 && (
-                <View style={styles.lowStockBadge}>
-                  <Zap size={10} color="white" fill="white" />
-                  <Text style={styles.lowStockText}>LOW STOCK</Text>
+              <View style={styles.details}>
+                <View style={styles.vendorRow}>
+                  <Text style={[styles.vendorName, { color: theme.subtext }]} numberOfLines={1}>
+                    {item.seller?.display_name?.toUpperCase()}
+                  </Text>
+                  {isDiamond && <Gem size={10} color="#8B5CF6" fill="#8B5CF6" />}
                 </View>
-              )}
-            </TouchableOpacity>
-
-            <View style={styles.details}>
-              <Text style={styles.vendorName} numberOfLines={1}>
-                {item.seller?.display_name?.toUpperCase() || 'MERCHANT'}
-              </Text>
-              <Text style={styles.itemName} numberOfLines={1}>{item.name}</Text>
-              <Text style={styles.itemPrice}>₦{item.price.toLocaleString()}</Text>
-              
-              <TouchableOpacity style={styles.addBtn} onPress={() => handleQuickAdd(item)}>
-                <ShoppingCart size={14} color="white" strokeWidth={3} />
-                <Text style={styles.addBtnText}>ADD TO BAG</Text>
-              </TouchableOpacity>
+                
+                <Text style={[styles.itemName, { color: theme.text }]} numberOfLines={1}>{item.name}</Text>
+                <Text style={[styles.itemPrice, { color: Colors.brand.emerald }]}>₦{item.price.toLocaleString()}</Text>
+                
+                <TouchableOpacity 
+                  style={[styles.addBtn, { backgroundColor: theme.text }]} 
+                  onPress={() => handleQuickAdd(item)}
+                >
+                  <ShoppingBag size={14} color={theme.background} strokeWidth={3} />
+                  <Text style={[styles.addBtnText, { color: theme.background }]}>ADD TO BAG</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          </View>
-        )}
+          );
+        }}
       />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FFF' },
+  container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 25, paddingVertical: 20, gap: 15, borderBottomWidth: 1, borderBottomColor: '#F9FAFB' },
-  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB', borderRadius: 14 },
-  title: { fontSize: 22, fontWeight: '900', color: '#111827', letterSpacing: -0.5 },
-  subtitle: { fontSize: 10, fontWeight: '900', color: '#10B981', letterSpacing: 1.5, marginTop: 2 },
-  gridContent: { padding: 20, paddingBottom: 100 },
+  loaderText: { marginTop: 15, fontSize: 8, fontWeight: '900', letterSpacing: 2, opacity: 0.4 },
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 18, gap: 15, borderBottomWidth: 1.5 },
+  headerInfo: { flex: 1 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 14 },
+  title: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
+  subtitle: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5, marginTop: 2 },
+  gridContent: { padding: 20 },
   gridRow: { justifyContent: 'space-between' },
   wishItem: { width: COLUMN_WIDTH, marginBottom: 35 },
-  imageBox: { width: COLUMN_WIDTH, height: IMAGE_HEIGHT, borderRadius: 28, overflow: 'hidden', backgroundColor: '#F9FAFB', borderWidth: 1.5, borderColor: '#F3F4F6' },
-  itemImage: { width: '100%', height: '100%', resizeMode: 'cover' },
-  removeBtn: { position: 'absolute', top: 12, right: 12, width: 36, height: 36, borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.95)', justifyContent: 'center', alignItems: 'center' },
-  lowStockBadge: { position: 'absolute', bottom: 12, left: 12, backgroundColor: '#EF4444', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  imageBox: { width: COLUMN_WIDTH, height: IMAGE_HEIGHT, borderRadius: 24, overflow: 'hidden', borderWidth: 1.5, position: 'relative' },
+  itemImage: { width: '100%', height: '100%' },
+  removeBtn: { position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  lowStockBadge: { position: 'absolute', bottom: 10, left: 10, backgroundColor: '#EF4444', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4, elevation: 4 },
   lowStockText: { color: 'white', fontSize: 8, fontWeight: '900' },
-  details: { marginTop: 15, gap: 4 },
-  vendorName: { fontSize: 9, fontWeight: '900', color: '#9CA3AF', letterSpacing: 1 },
-  itemName: { fontSize: 14, fontWeight: '800', color: '#111827' },
-  itemPrice: { fontSize: 13, fontWeight: '900', color: '#10B981', marginBottom: 8 },
-  addBtn: { backgroundColor: '#111827', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 18 },
-  addBtnText: { color: 'white', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
-  emptyState: { alignItems: 'center', marginTop: 120, paddingHorizontal: 40 },
-  emptyCircle: { width: 100, height: 100, borderRadius: 40, backgroundColor: '#F9FAFB', justifyContent: 'center', alignItems: 'center', marginBottom: 25 },
-  emptyTitle: { fontSize: 18, fontWeight: '900', color: '#111827' },
-  emptySub: { textAlign: 'center', color: '#9CA3AF', marginTop: 12, lineHeight: 22, fontSize: 13, fontWeight: '600' },
-  shopBtn: { backgroundColor: '#111827', paddingHorizontal: 35, paddingVertical: 20, borderRadius: 24, marginTop: 40 },
-  shopBtnText: { color: 'white', fontWeight: '900', fontSize: 11, letterSpacing: 1.5 }
+  details: { marginTop: 12, gap: 3 },
+  vendorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  vendorName: { fontSize: 8, fontWeight: '900', letterSpacing: 1, flex: 1 },
+  itemName: { fontSize: 14, fontWeight: '800' },
+  itemPrice: { fontSize: 13, fontWeight: '900', marginBottom: 6 },
+  addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 16, elevation: 4 },
+  addBtnText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  emptyState: { flex: 1, alignItems: 'center', marginTop: 100, paddingHorizontal: 30 },
+  emptyCircle: { width: 110, height: 110, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: 25 },
+  emptyTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
+  emptySub: { textAlign: 'center', marginTop: 12, lineHeight: 22, fontSize: 14, fontWeight: '600', opacity: 0.6 },
+  shopBtn: { paddingHorizontal: 35, paddingVertical: 20, borderRadius: 24, marginTop: 40, elevation: 6 },
+  shopBtnText: { fontWeight: '900', fontSize: 11, letterSpacing: 1.5 }
 });

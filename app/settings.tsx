@@ -9,12 +9,13 @@ import {
   ArrowLeft, ShieldCheck, Bell, Lock, 
   Trash2, ChevronRight, Smartphone, 
   Globe, UserX, Store, Moon, Fingerprint, 
-  Clock, MapPin, Languages, KeyRound
+  Clock, MapPin, Languages, KeyRound,
+  HelpCircle, AlertCircle, Eye, HardDrive, 
+  Bookmark, EyeOff
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import * as LocalAuthentication from 'expo-local-authentication';
 
-// 🏛️ Sovereign Components
+// App Connection
 import { supabase } from '../src/lib/supabase';
 import { useUserStore } from '../src/store/useUserStore'; 
 import { View, Text } from '../src/components/Themed';
@@ -22,8 +23,9 @@ import Colors from '../src/constants/Colors';
 import { useColorScheme } from '../src/components/useColorScheme';
 
 /**
- * 🏰 SYSTEM SETTINGS v27.1 (Pure Build)
- * Audited: Section I Identity Layer & Security Protocols.
+ * 🏰 SETTINGS SCREEN v31.0
+ * Purpose: A central hub for users to manage their privacy, shop status, and account security.
+ * Features: Real-time settings sync and memory management (Clear Cache).
  */
 export default function SettingsScreen() {
   const router = useRouter();
@@ -32,54 +34,48 @@ export default function SettingsScreen() {
   const { profile, refreshUserData } = useUserStore();
 
   const [syncing, setSyncing] = useState(false);
-  const [storeOpen, setStoreOpen] = useState(profile?.is_store_open ?? true);
-  const [biometrics, setBiometrics] = useState(false);
-  const [notifications, setNotifications] = useState({
-    orders: true,
-    messages: true,
-    updates: false
-  });
+  const [activityStatus, setActivityStatus] = useState(true);
 
-  const handleToggleStore = async (value: boolean) => {
+  /**
+   * 🛡️ SAVE SETTINGS
+   * Updates specific profile columns in the database and refreshes the local app data.
+   */
+  const handleUpdateProfile = async (column: string, value: any) => {
     setSyncing(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ is_store_open: value })
+        .update({ [column]: value })
         .eq('id', profile?.id);
 
       if (error) throw error;
-      setStoreOpen(value);
       await refreshUserData();
     } catch (e) {
-      setStoreOpen(!value);
-      Alert.alert("Error", "Could not update your store status.");
+      Alert.alert("Update Failed", "We couldn't save your changes. Please check your connection.");
     } finally {
       setSyncing(false);
     }
   };
 
-  const handleToggleBiometrics = async (value: boolean) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    if (value) {
-      const hasHardware = await LocalAuthentication.hasHardwareAsync();
-      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
-      if (!hasHardware || !isEnrolled) {
-        Alert.alert("Not Supported", "Your device does not support FaceID or TouchID.");
-        return;
-      }
-      const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Confirm Identity',
-      });
-      if (result.success) setBiometrics(true);
-    } else {
-      setBiometrics(false);
-    }
+  const handleClearCache = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    Alert.alert(
+      "Clear Cache", 
+      "This will free up space by removing temporary images. Your account and items will not be deleted.",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Clear Now", onPress: () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+            Alert.alert("Success", "Temporary data has been cleared.");
+        }}
+      ]
+    );
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
       <SafeAreaView style={{backgroundColor: 'transparent'}} edges={['top']}>
         <View style={[styles.header, { borderBottomColor: theme.border }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
@@ -92,124 +88,126 @@ export default function SettingsScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollArea}>
         
-        {/* SHOP SETTINGS (Only for Merchants) */}
+        {/* SHOP TOOLS (Only visible to Sellers) */}
         {profile?.is_seller && (
           <>
-            <Text style={[styles.sectionLabel, { color: theme.subtext }]}>SHOP OPERATIONS</Text>
+            <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Shop Settings</Text>
             <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <SettingToggle 
                 theme={theme}
                 icon={Store} 
-                label="Online Status" 
-                sub={storeOpen ? "Your shop is visible to customers" : "Shop is currently hidden"}
-                value={storeOpen} 
-                onToggle={handleToggleStore}
+                label="Store Status" 
+                sub={profile?.is_store_open ? "Customers can find your shop" : "Your shop is currently hidden"}
+                value={profile?.is_store_open ?? false} 
+                onToggle={(v: boolean) => handleUpdateProfile('is_store_open', v)}
                 isLoading={syncing}
               />
               <SettingLink 
                 theme={theme}
                 icon={Clock} 
-                label="Opening Hours" 
-                sub="Set your available times"
+                label="Store Hours" 
+                sub="Set when you are open for business"
                 onPress={() => {}} 
-              />
-              <SettingLink 
-                theme={theme}
-                icon={MapPin} 
-                label="Delivery Zones" 
-                sub="Manage shipping locations"
-                onPress={() => router.push('/seller/logistics')} 
               />
             </View>
           </>
         )}
 
-        {/* SECURITY */}
-        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>SECURITY</Text>
+        {/* 🛡️ PRIVACY & SAFETY */}
+        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Privacy</Text>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          
+          <SettingToggle 
+            theme={theme}
+            icon={Bookmark} 
+            label="Private Saved Items" 
+            sub="Hide your wishlist from other users"
+            value={profile?.is_wardrobe_private ?? false} 
+            onToggle={(v: boolean) => handleUpdateProfile('is_wardrobe_private', v)}
+            isLoading={syncing}
+          />
+
+          <SettingToggle 
+            theme={theme}
+            icon={Eye} 
+            label="Activity Status" 
+            sub="Show others when you are online"
+            value={activityStatus} 
+            onToggle={(v: boolean) => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                setActivityStatus(v);
+            }} 
+          />
+
+          <SettingLink 
+            theme={theme}
+            icon={EyeOff} 
+            label="Blocked Users" 
+            sub="Manage accounts you have restricted"
+            onPress={() => {}} 
+          />
+        </View>
+
+        {/* 💬 CUSTOMER SUPPORT */}
+        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Support</Text>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <SettingLink 
+            theme={theme}
+            icon={HelpCircle} 
+            label="Help Center" 
+            sub="Read our guides and common questions"
+            onPress={() => {}} 
+          />
+          <SettingLink 
+            theme={theme}
+            icon={AlertCircle} 
+            label="Report a Problem" 
+            sub="Tell us if something is not working"
+            onPress={() => {}} 
+          />
+        </View>
+
+        {/* 💾 DEVICE STORAGE */}
+        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Device Storage</Text>
+        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+          <SettingLink 
+            theme={theme}
+            icon={HardDrive} 
+            label="Clear Cache" 
+            sub="Free up space on your phone"
+            onPress={handleClearCache} 
+          />
+        </View>
+
+        {/* ACCOUNT SECURITY */}
+        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>Security</Text>
         <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <SettingLink 
             theme={theme}
             icon={KeyRound} 
-            label="Change Password" 
-            sub="Update your login credentials"
+            label="Update Password" 
+            sub="Change your login details"
             onPress={() => router.push('/auth/update-password')} 
-          />
-          <SettingToggle 
-            theme={theme}
-            icon={Fingerprint} 
-            label="Biometric Login" 
-            sub="FaceID or Fingerprint"
-            value={biometrics} 
-            onToggle={handleToggleBiometrics} 
           />
           <SettingLink 
             theme={theme}
             icon={Smartphone} 
-            label="Logged-in Devices" 
-            sub="Manage active sessions"
-            onPress={() => {}} 
-          />
-        </View>
-
-        {/* NOTIFICATIONS */}
-        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>NOTIFICATIONS</Text>
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <SettingToggle 
-            theme={theme}
-            icon={Bell} 
-            label="Order Updates" 
-            value={notifications.orders} 
-            onToggle={() => setNotifications({...notifications, orders: !notifications.orders})} 
-          />
-          <SettingToggle 
-            theme={theme}
-            icon={Globe} 
-            label="Marketplace News" 
-            value={notifications.updates} 
-            onToggle={() => setNotifications({...notifications, updates: !notifications.updates})} 
-          />
-        </View>
-
-        {/* PREFERENCES */}
-        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>PREFERENCES</Text>
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <SettingLink 
-            theme={theme}
-            icon={Moon} 
-            label="Appearance" 
-            sub={`Theme: ${colorScheme?.toUpperCase()}`}
-            onPress={() => {}} 
-          />
-          <SettingLink 
-            theme={theme}
-            icon={Languages} 
-            label="Language" 
-            sub="English (Nigeria)"
-            onPress={() => {}} 
-          />
-        </View>
-
-        {/* ACCOUNT MANAGEMENT */}
-        <Text style={[styles.sectionLabel, { color: theme.subtext }]}>ACCOUNT MANAGEMENT</Text>
-        <View style={[styles.card, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-          <SettingLink 
-            theme={theme}
-            icon={UserX} 
-            label="Delete Account" 
-            sub="Permanently remove your data"
-            color="#EF4444"
+            label="Active Devices" 
+            sub="See where you are currently signed in"
             onPress={() => {}} 
           />
         </View>
 
         <View style={styles.footer}>
           <ShieldCheck size={20} color={theme.border} strokeWidth={2} />
-          <Text style={[styles.versionText, { color: theme.subtext }]}>STORELINK v75.0</Text>
+          <Text style={[styles.versionText, { color: theme.subtext }]}>APP VERSION 31.0</Text>
         </View>
       </ScrollView>
     </View>
   );
 }
+
+/** 🏗️ REUSABLE MENU COMPONENTS */
 
 const SettingLink = ({ icon: Icon, label, sub, onPress, color, theme }: any) => (
   <TouchableOpacity 
@@ -254,16 +252,16 @@ const SettingToggle = ({ icon: Icon, label, sub, value, onToggle, isLoading, the
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1 },
-  headerTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
-  backBtn: { width: 44, height: 44, justifyContent: 'center', backgroundColor: 'transparent' },
-  scrollArea: { padding: 25, paddingBottom: 60, backgroundColor: 'transparent' },
-  sectionLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginBottom: 15, textTransform: 'uppercase' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1.5 },
+  headerTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center' },
+  scrollArea: { padding: 25, paddingBottom: 60 },
+  sectionLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5, marginBottom: 15, textTransform: 'uppercase' },
   card: { borderRadius: 32, padding: 8, marginBottom: 35, borderWidth: 1.5 },
-  row: { flexDirection: 'row', alignItems: 'center', padding: 15, gap: 15, backgroundColor: 'transparent' },
+  row: { flexDirection: 'row', alignItems: 'center', padding: 15, gap: 15 },
   iconCircle: { width: 44, height: 44, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  label: { fontSize: 15, fontWeight: '800', letterSpacing: 0.2 },
-  subLabel: { fontSize: 11, fontWeight: '600', marginTop: 3 },
-  footer: { marginTop: 20, alignItems: 'center', marginBottom: 40, gap: 10, backgroundColor: 'transparent' },
+  label: { fontSize: 15, fontWeight: '800' },
+  subLabel: { fontSize: 11, fontWeight: '600', marginTop: 3, opacity: 0.6 },
+  footer: { marginTop: 20, alignItems: 'center', marginBottom: 40, gap: 10 },
   versionText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 }
 });

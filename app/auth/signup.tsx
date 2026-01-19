@@ -11,15 +11,15 @@ import {
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
-// Sovereign Components
+// App Components
 import { View, Text } from '../../src/components/Themed';
 import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🏰 ACCOUNT CREATION SCREEN v95.0
- * Fixed: Replaced username with slug.
- * Language: Removed all technical jargon for human clarity.
+ * 🏰 ACCOUNT CREATION v97.0
+ * Purpose: Safe and simple user registration.
+ * Features: Automatic username generation and security validation.
  */
 export default function SignupScreen() {
   const router = useRouter();
@@ -34,7 +34,11 @@ export default function SignupScreen() {
   const fadeAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 800, useNativeDriver: true }).start();
+    Animated.timing(fadeAnim, { 
+      toValue: 1, 
+      duration: 1000, 
+      useNativeDriver: true 
+    }).start();
   }, []);
 
   const validation = {
@@ -51,8 +55,8 @@ export default function SignupScreen() {
     validation.match && email.includes('@');
 
   /**
-   * 🛡️ CREATE ACCOUNT PROCESS
-   * Steps: Create Auth Login -> Setup Profile -> Send Verification Code.
+   * 🛡️ SIGNUP PROCESS
+   * Creates the user account and sets up their initial profile details.
    */
   const handleSignup = async () => {
     if (!isFormValid || loading) return;
@@ -62,20 +66,20 @@ export default function SignupScreen() {
     const cleanEmail = email.toLowerCase().trim();
 
     try {
-      // 1. Create the Login Account
+      // 1. Create Login Account
       const { data, error: authError } = await supabase.auth.signUp({
         email: cleanEmail,
         password,
         options: {
           data: { 
-            display_name: cleanEmail.split('@')[0],
+            display_name: cleanEmail.split('@')[0].toUpperCase(),
           }
         }
       });
 
       let userId = data?.user?.id;
 
-      // If user already exists, we try to recover their ID to fix their profile
+      // Check if user already exists
       if (authError) {
         if (authError.message.includes("already registered")) {
           const { data: signInData } = await supabase.auth.signInWithPassword({
@@ -88,31 +92,30 @@ export default function SignupScreen() {
         }
       }
 
-      if (!userId) throw new Error("Could not create account ID.");
+      if (!userId) throw new Error("Could not create user ID.");
 
-      // 🏛️ 2. SETUP PROFILE DATA
-      // 🛠️ FIX: Replaced 'username' with 'slug'
+      // 2. Set Up User Profile
       const generatedSlug = cleanEmail.split('@')[0] + Math.floor(1000 + Math.random() * 9000);
       
       const { error: profileError } = await supabase.from('profiles').upsert({
         id: userId,
         email: cleanEmail,
-        slug: generatedSlug, // 🛡️ Using slug now
-        display_name: cleanEmail.split('@')[0],
+        slug: generatedSlug,
+        display_name: cleanEmail.split('@')[0].toUpperCase(),
         onboarding_completed: false, 
         is_seller: false,
         coin_balance: 0, 
         prestige_weight: 1, 
         subscription_plan: 'none',
+        subscription_status: 'none',
+        verification_status: 'none',
+        created_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' });
       
-      if (profileError) {
-        console.error("Profile Setup Error:", profileError.message);
-        throw new Error("Failed to set up your profile details.");
-      }
+      if (profileError) throw new Error("Failed to set up your profile.");
 
-      // 📡 3. CREATE VERIFICATION CODE
+      // 3. Generate Verification Code
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const { error: otpError } = await supabase.from("otp_verifications").upsert({ 
         email: cleanEmail, 
@@ -121,7 +124,7 @@ export default function SignupScreen() {
 
       if (otpError) throw otpError;
 
-      // 📧 4. SEND THE EMAIL
+      // 4. Send Verification Email
       fetch("https://storelink.ng/api/send-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -130,7 +133,7 @@ export default function SignupScreen() {
             code: otpCode, 
             type: 'VERIFY_SIGNUP' 
           }),
-      }).catch(() => console.log("Email sending delayed."));
+      }).catch(() => console.log("Email service busy."));
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
@@ -141,7 +144,7 @@ export default function SignupScreen() {
 
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Signup Failed", e.message.toUpperCase());
+      Alert.alert("Signup Error", e.message.toUpperCase());
     } finally {
       setLoading(false);
     }
@@ -157,23 +160,23 @@ export default function SignupScreen() {
             keyboardShouldPersistTaps="handled"
           >
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-              <ArrowLeft color={theme.text} size={28} />
+              <ArrowLeft color={theme.text} size={32} strokeWidth={2.5} />
             </TouchableOpacity>
 
             <View style={styles.header}>
-              <Text style={[styles.title, { color: theme.text }]}>Create your{"\n"}<Text style={{ color: Colors.brand.emerald, fontStyle: 'italic' }}>Account.</Text></Text>
+              <Text style={[styles.title, { color: theme.text }]}>Join the{"\n"}<Text style={{ color: Colors.brand.emerald }}>Marketplace.</Text></Text>
               <Text style={[styles.subtitle, { color: theme.subtext }]}>
-                Join the marketplace and start discovering unique brands today.
+                Create your account to start discovering brands.
               </Text>
             </View>
 
             <View style={styles.form}>
               <View style={[styles.inputGroup, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Mail size={18} color={theme.subtext} style={styles.icon} />
+                <Mail size={20} color={theme.subtext} style={styles.icon} strokeWidth={2.5} />
                 <TextInput 
                   style={[styles.input, { color: theme.text }]} 
                   placeholder="Email Address" 
-                  placeholderTextColor={theme.subtext}
+                  placeholderTextColor={`${theme.subtext}80`}
                   value={email}
                   onChangeText={setEmail}
                   keyboardType="email-address"
@@ -183,39 +186,39 @@ export default function SignupScreen() {
               </View>
 
               <View style={[styles.inputGroup, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <Lock size={18} color={theme.subtext} style={styles.icon} />
+                <Lock size={20} color={theme.subtext} style={styles.icon} strokeWidth={2.5} />
                 <TextInput 
                   style={[styles.input, { color: theme.text }]} 
                   placeholder="Create Password" 
-                  placeholderTextColor={theme.subtext}
+                  placeholderTextColor={`${theme.subtext}80`}
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry={!showPassword}
                   selectionColor={Colors.brand.emerald}
                 />
                 <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  {showPassword ? <EyeOff size={20} color={theme.text} /> : <Eye size={20} color={theme.subtext} />}
+                  {showPassword ? <EyeOff size={22} color={theme.text} strokeWidth={2} /> : <Eye size={22} color={theme.subtext} strokeWidth={2} />}
                 </TouchableOpacity>
               </View>
 
               <View style={[styles.inputGroup, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                <ShieldCheck size={18} color={validation.match ? Colors.brand.emerald : theme.subtext} style={styles.icon} />
+                <ShieldCheck size={20} color={validation.match ? Colors.brand.emerald : theme.subtext} style={styles.icon} strokeWidth={2.5} />
                 <TextInput 
                   style={[styles.input, { color: theme.text }]} 
                   placeholder="Confirm Password" 
-                  placeholderTextColor={theme.subtext}
+                  placeholderTextColor={`${theme.subtext}80`}
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   secureTextEntry={!showPassword}
                   selectionColor={Colors.brand.emerald}
                 />
-                {validation.match && <CheckCircle2 size={18} color={Colors.brand.emerald} strokeWidth={3} />}
+                {validation.match && <CheckCircle2 size={20} color={Colors.brand.emerald} strokeWidth={3} />}
               </View>
 
               <View style={styles.shieldGrid}>
-                <ShieldIndicator met={validation.length} label="8+ Characters" theme={theme} />
+                <ShieldIndicator met={validation.length} label="8+ Char" theme={theme} />
                 <ShieldIndicator met={validation.number} label="Number" theme={theme} />
-                <ShieldIndicator met={validation.capital} label="Uppercase" theme={theme} />
+                <ShieldIndicator met={validation.capital} label="Upper" theme={theme} />
                 <ShieldIndicator met={validation.special} label="Symbol" theme={theme} />
                 <ShieldIndicator met={validation.match} label="Match" theme={theme} />
               </View>
@@ -232,7 +235,7 @@ export default function SignupScreen() {
               ) : (
                 <>
                   <Text style={[styles.btnLabel, { color: theme.background }]}>CREATE ACCOUNT</Text>
-                  <ArrowRight size={18} color={theme.background} strokeWidth={3} />
+                  <ArrowRight size={20} color={theme.background} strokeWidth={3} />
                 </>
               )}
             </TouchableOpacity>
@@ -258,23 +261,23 @@ const ShieldIndicator = ({ met, label, theme }: { met: boolean; label: string; t
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: 35, paddingBottom: 60, paddingTop: 60, flexGrow: 1, justifyContent: 'center' },
-  backBtn: { width: 44, height: 44, justifyContent: 'center' },
-  header: { marginTop: 20, marginBottom: 40 },
-  title: { fontSize: 44, fontWeight: '900', letterSpacing: -2, lineHeight: 48 },
-  subtitle: { fontSize: 15, fontWeight: '600', marginTop: 15, lineHeight: 24 },
-  form: { gap: 18 },
-  inputGroup: { flexDirection: 'row', alignItems: 'center', borderRadius: 22, paddingHorizontal: 22, height: 70, borderWidth: 1.5 },
+  scrollContent: { paddingHorizontal: 30, paddingBottom: 60, paddingTop: 40, flexGrow: 1, justifyContent: 'center' },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', marginBottom: 20 },
+  header: { marginBottom: 45 },
+  title: { fontSize: 40, fontWeight: '900', letterSpacing: -1.5, lineHeight: 46 },
+  subtitle: { fontSize: 14, fontWeight: '600', marginTop: 15, lineHeight: 22, opacity: 0.7 },
+  form: { gap: 20 },
+  inputGroup: { flexDirection: 'row', alignItems: 'center', borderRadius: 24, paddingHorizontal: 22, height: 72, borderWidth: 1.5 },
   icon: { marginRight: 15 },
   input: { flex: 1, fontSize: 16, fontWeight: '700' },
-  shieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 15, marginTop: 12, paddingHorizontal: 8 },
+  shieldGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: 10, paddingHorizontal: 5 },
   shieldRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   shieldDot: { width: 6, height: 6, borderRadius: 3 },
-  shieldText: { fontSize: 11, fontWeight: '700' },
-  mainBtn: { height: 75, borderRadius: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 50 },
-  btnDisabled: { opacity: 0.3 },
+  shieldText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
+  mainBtn: { height: 75, borderRadius: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 50, elevation: 8, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
+  btnDisabled: { opacity: 0.15 },
   btnLabel: { fontWeight: '900', fontSize: 13, letterSpacing: 1.5 },
-  footerLink: { marginTop: 35, alignItems: 'center' },
+  footerLink: { marginTop: 40, alignItems: 'center' },
   footerText: { fontSize: 14, fontWeight: '700' },
   boldText: { fontWeight: '900' }
 });

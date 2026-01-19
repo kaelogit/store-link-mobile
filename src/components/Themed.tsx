@@ -16,13 +16,11 @@ export type ViewProps = ThemeProps & DefaultView['props'];
 
 /**
  * 🎨 THEME COLOR HOOK
- * Resolves colors based on the current system theme (Light/Dark).
  */
 export function useThemeColor(
   props: { light?: string; dark?: string },
   colorName: keyof typeof Colors.light & keyof typeof Colors.dark
 ) {
-  // Default to 'dark' for the Vortex aesthetic if theme is undefined
   const theme = useColorScheme() ?? 'dark';
   const colorFromProps = props[theme];
 
@@ -51,7 +49,6 @@ export function Text(props: TextProps) {
 
 /**
  * 🔳 THEMED VIEW
- * Use this instead of DefaultView for automatic light/dark support.
  */
 export function View(props: ViewProps) {
   const { style, lightColor, darkColor, ...otherProps } = props;

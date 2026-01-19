@@ -1,23 +1,25 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Tabs } from 'expo-router';
 import { 
   Home, MessageCircle, User, 
-  PlayCircle, Search 
+  Play, Search 
 } from 'lucide-react-native';
 import { StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-// Sovereign Components
+// App Components
 import { View } from '../../src/components/Themed';
 import { useUserStore } from '../../src/store/useUserStore';
 import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🏰 MASTER TAB REGISTRY v80.0
- * Fixed: Removed "post" route error, removed labels, and reordered tabs.
+ * 🏰 TAB NAVIGATION v83.0 - HARDWARE SYNC
+ * Layout: Full Hardware Inset Logic (Edge-to-Edge Optimized).
+ * Visual: Glassmorphic iOS layer / Solid Material Android layer.
+ * Interaction: Tactile Haptic Handshake on index change.
  */
 export default function TabLayout() {
   const colorScheme = useColorScheme();
@@ -27,14 +29,14 @@ export default function TabLayout() {
 
   if (loading) {
     return (
-      <View style={[styles.loaderContainer, { backgroundColor: theme.background }]}>
-        <ActivityIndicator size="small" color={Colors.brand.emerald} />
+      <View style={[styles.centered, { backgroundColor: theme.background }]}>
+        <ActivityIndicator size="large" color={Colors.brand.emerald} />
       </View>
     );
   }
 
-  const BOTTOM_PADDING = insets.bottom > 0 ? insets.bottom : 12;
-  const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 88 : 65 + BOTTOM_PADDING;
+  // 🛡️ HARDWARE SPACING ENGINE (Dynamic calculation for 2026 flagships)
+  const TAB_BAR_HEIGHT = Platform.OS === 'ios' ? 88 : 68 + (insets.bottom > 0 ? insets.bottom / 2 : 0);
 
   return (
     <Tabs 
@@ -42,98 +44,96 @@ export default function TabLayout() {
         tabBarActiveTintColor: theme.text,
         tabBarInactiveTintColor: theme.subtext,
         headerShown: false,
-        tabBarShowLabel: false, // 🛠️ FIX: Removes the text under icons
+        tabBarShowLabel: false, 
+        tabBarHideOnKeyboard: true, // Prevents layout jitters during messaging
         tabBarBackground: () => (
           Platform.OS === 'ios' ? (
             <BlurView 
-              intensity={80} 
+              intensity={Platform.OS === 'ios' ? 90 : 0} 
               tint={colorScheme === 'dark' ? 'dark' : 'light'} 
               style={StyleSheet.absoluteFill} 
             />
           ) : (
-            <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.background }]} />
+            <View style={[StyleSheet.absoluteFill, { backgroundColor: theme.background, opacity: 0.98 }]} />
           )
         ),
         tabBarStyle: { 
           height: TAB_BAR_HEIGHT, 
           position: 'absolute', 
-          borderTopWidth: 1,
+          borderTopWidth: 0.5,
           borderTopColor: theme.border,
-          elevation: 0,
-          shadowOpacity: 0,
-          paddingTop: 12,
-          paddingBottom: BOTTOM_PADDING,
+          elevation: 0, 
+          shadowOpacity: 0.05,
+          shadowRadius: 15,
           backgroundColor: Platform.OS === 'ios' ? 'transparent' : theme.background,
         },
       }}
       screenListeners={{
         state: () => {
+          // 🏎️ TACTILE HANDSHAKE: Lightweight feedback on tab switch
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         },
       }}
     >
       <Tabs.Screen name="index" options={{
         tabBarIcon: ({ color, focused }) => (
-          <View style={styles.iconContainer}>
-             <Home size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-             {focused && <View style={[styles.activeDot, { backgroundColor: color }]} />}
-          </View>
+          <TabIcon Icon={Home} color={color} focused={focused} />
         ),
       }} />
       
       <Tabs.Screen name="explore" options={{
         tabBarIcon: ({ color, focused }) => (
-          <View style={styles.iconContainer}>
-             <PlayCircle size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-             {focused && <View style={[styles.activeDot, { backgroundColor: color }]} />}
-          </View>
+          <TabIcon Icon={Play} color={color} focused={focused} />
         ),
       }} />
 
       <Tabs.Screen name="search" options={{
         tabBarIcon: ({ color, focused }) => (
-          <View style={styles.iconContainer}>
-             <Search size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-             {focused && <View style={[styles.activeDot, { backgroundColor: color }]} />}
-          </View>
+          <TabIcon Icon={Search} color={color} focused={focused} />
         ),
       }} />
 
       <Tabs.Screen name="messages" options={{
         tabBarIcon: ({ color, focused }) => (
-          <View style={styles.iconContainer}>
-             <MessageCircle size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-             {focused && <View style={[styles.activeDot, { backgroundColor: color }]} />}
-          </View>
+          <TabIcon Icon={MessageCircle} color={color} focused={focused} />
         ),
       }} />
 
       <Tabs.Screen name="profile" options={{
         tabBarIcon: ({ color, focused }) => (
-          <View style={styles.iconContainer}>
-             <User size={24} color={color} strokeWidth={focused ? 2.5 : 2} />
-             {focused && <View style={[styles.activeDot, { backgroundColor: color }]} />}
-          </View>
+          <TabIcon Icon={User} color={color} focused={focused} />
         ),
       }} />
     </Tabs>
   );
 }
 
+/** 🛡️ MEMOIZED ICON ENGINE - Prevents render-jank during tab transitions */
+const TabIcon = memo(({ Icon, color, focused }: { Icon: any, color: string, focused: boolean }) => (
+  <View style={styles.iconWrapper}>
+    <Icon 
+      size={24} 
+      color={color} 
+      strokeWidth={focused ? 2.8 : 2.2} // Bolder stroke on focus for visual weight
+    />
+    {focused && <View style={[styles.activeDot, { backgroundColor: color }]} />}
+  </View>
+));
+
 const styles = StyleSheet.create({
-  loaderContainer: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  iconContainer: { 
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  iconWrapper: { 
     alignItems: 'center', 
     justifyContent: 'center', 
-    width: 40, 
-    height: 35, 
-    backgroundColor: 'transparent' 
+    height: '100%',
+    width: 50,
+    backgroundColor: 'transparent'
   },
   activeDot: { 
     width: 4, 
     height: 4, 
     borderRadius: 2, 
     position: 'absolute', 
-    bottom: -10 
+    bottom: Platform.OS === 'ios' ? 12 : 8, // Calibrated for notch & gesture bar
   },
 });

@@ -1,9 +1,10 @@
 import React from 'react';
 import { StyleSheet, TouchableOpacity, Modal, Dimensions, Platform } from 'react-native';
-import { MessageSquare, Phone, X, ShieldCheck, ChevronRight } from 'lucide-react-native';
+import { MessageSquare, X, ShieldCheck, ArrowRight, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 
-// 🏛️ Sovereign Components
+// App Components
 import { View, Text } from './Themed';
 import Colors from '../constants/Colors';
 import { useColorScheme } from './useColorScheme';
@@ -14,89 +15,90 @@ interface ContactBridgeProps {
   visible: boolean;
   onClose: () => void;
   onSelectInApp: () => void;
-  onSelectWhatsApp: () => void;
   merchantName: string;
+  isDiamond?: boolean;
 }
 
 /**
- * 🏰 CONTACT BRIDGE v22.1 (Pure Build)
- * Audited: Section VII Messaging Governance & Handshake Security.
+ * 🏰 CONTACT BRIDGE v25.0
+ * Purpose: A security gate that encourages users to use the internal chat for safety.
+ * Logic: Provides a briefing on protection benefits before starting a conversation.
  */
 export const ContactBridge = ({ 
   visible, 
   onClose, 
   onSelectInApp, 
-  onSelectWhatsApp, 
-  merchantName 
+  merchantName,
+  isDiamond 
 }: ContactBridgeProps) => {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
 
-  const handleSelection = (type: 'in-app' | 'whatsapp') => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    if (type === 'in-app') onSelectInApp();
-    else onSelectWhatsApp();
+  const handleOpenChat = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    onSelectInApp();
   };
 
   return (
     <Modal 
       visible={visible} 
       transparent 
-      animationType="slide" 
+      animationType="fade" 
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View style={styles.overlay}>
-        <TouchableOpacity style={styles.dismiss} activeOpacity={1} onPress={onClose} />
+      <View style={styles.masterOverlay}>
+        <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill}>
+          <TouchableOpacity style={styles.dismiss} activeOpacity={1} onPress={onClose} />
+        </BlurView>
         
         <View style={[styles.sheet, { backgroundColor: theme.background }]}>
+          {/* Pull handle for visual cue */}
           <View style={[styles.handle, { backgroundColor: theme.border }]} />
           
-          <View style={[styles.header, { backgroundColor: 'transparent' }]}>
-            <View style={{ backgroundColor: 'transparent' }}>
-              <Text style={[styles.title, { color: theme.text }]}>Communication</Text>
-              <Text style={[styles.subtitle, { color: theme.subtext }]}>Contacting @{merchantName.toLowerCase()}</Text>
+          <View style={styles.header}>
+            <View>
+              <View style={styles.titleRow}>
+                <Text style={[styles.title, { color: theme.text }]}>Secure Inquiry</Text>
+                {isDiamond && <Zap size={14} color={Colors.brand.gold} fill={Colors.brand.gold} />}
+              </View>
+              <Text style={[styles.subtitle, { color: theme.subtext }]}>Connecting with @{merchantName.toLowerCase()}</Text>
             </View>
             <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: theme.surface }]}>
               <X size={20} color={theme.text} strokeWidth={3} />
             </TouchableOpacity>
           </View>
 
-          <View style={[styles.options, { backgroundColor: 'transparent' }]}>
-            {/* 🛡️ IN-APP MESSENGER (Handshake Official) */}
-            <TouchableOpacity 
-              style={[styles.optionCard, { backgroundColor: theme.surface, borderColor: theme.border }]} 
-              onPress={() => handleSelection('in-app')}
-            >
-              <View style={[styles.iconBox, { backgroundColor: theme.text }]}>
-                <MessageSquare color={theme.background} size={22} strokeWidth={2.5} />
-              </View>
-              <View style={[styles.optionText, { backgroundColor: 'transparent' }]}>
-                <View style={[styles.row, { backgroundColor: 'transparent' }]}>
-                  <Text style={[styles.optionTitle, { color: theme.text }]}>Secure Messaging</Text>
-                  <ShieldCheck size={12} color={Colors.brand.emerald} />
-                </View>
-                <Text style={[styles.optionSub, { color: theme.subtext }]}>Best for order history and confirming payments.</Text>
-              </View>
-              <ChevronRight size={16} color={theme.border} strokeWidth={3} />
-            </TouchableOpacity>
-
-            {/* 🟢 WHATSAPP BRIDGE (Direct Line) */}
-            <TouchableOpacity 
-              style={[styles.optionCard, { backgroundColor: theme.surface, borderColor: 'rgba(37, 211, 102, 0.3)' }]} 
-              onPress={() => handleSelection('whatsapp')}
-            >
-              <View style={[styles.iconBox, { backgroundColor: '#25D366' }]}>
-                <Phone color="white" size={22} strokeWidth={2.5} />
-              </View>
-              <View style={[styles.optionText, { backgroundColor: 'transparent' }]}>
-                <Text style={[styles.optionTitle, { color: '#25D366' }]}>WhatsApp Business</Text>
-                <Text style={[styles.optionSub, { color: theme.subtext }]}>Direct chat for quick questions and negotiation.</Text>
-              </View>
-              <ChevronRight size={16} color={theme.border} strokeWidth={3} />
-            </TouchableOpacity>
+          <View style={styles.briefing}>
+            <View style={styles.infoRow}>
+              <ShieldCheck size={20} color={Colors.brand.emerald} strokeWidth={2.5} />
+              <Text style={[styles.infoText, { color: theme.text }]}>
+                Payments made in-app are fully protected.
+              </Text>
+            </View>
+            <View style={styles.infoRow}>
+              <MessageSquare size={20} color={theme.text} strokeWidth={2.5} />
+              <Text style={[styles.infoText, { color: theme.text }]}>
+                Your conversation and negotiation history is recorded.
+              </Text>
+            </View>
           </View>
 
-          <Text style={[styles.footerNote, { color: theme.subtext }]}>CONFIRM ALL PAYMENTS INSIDE THE APP FOR PROTECTION</Text>
+          <TouchableOpacity 
+            style={[styles.chatBtn, { backgroundColor: theme.text }]} 
+            onPress={handleOpenChat}
+            activeOpacity={0.9}
+          >
+            <MessageSquare color={theme.background} size={20} strokeWidth={3} />
+            <Text style={[styles.chatBtnText, { color: theme.background }]}>START SECURE CHAT</Text>
+            <ArrowRight color={theme.background} size={18} strokeWidth={3} />
+          </TouchableOpacity>
+
+          <View style={styles.footer}>
+             <Text style={[styles.footerNote, { color: theme.subtext }]}>
+                BY STARTING THIS CHAT, YOU AGREE TO KEEP ALL PAYMENTS DISCUSSIONS INSIDE THE STORELINK PLATFORM.
+             </Text>
+          </View>
         </View>
       </View>
     </Modal>
@@ -104,42 +106,29 @@ export const ContactBridge = ({
 };
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
+  masterOverlay: { flex: 1, justifyContent: 'flex-end' },
   dismiss: { flex: 1 },
   sheet: { 
-    borderTopLeftRadius: 40, 
-    borderTopRightRadius: 40, 
-    padding: 25, 
-    paddingBottom: Platform.OS === 'ios' ? 50 : 35,
-    ...Platform.select({
-      ios: {
-        shadowColor: '#000',
-        shadowOpacity: 0.15,
-        shadowRadius: 20,
-      },
-      android: {
-        elevation: 10
-      }
-    })
+    borderTopLeftRadius: 36, 
+    borderTopRightRadius: 36, 
+    padding: 30, 
+    paddingBottom: Platform.OS === 'ios' ? 60 : 40,
   },
-  handle: { width: 40, height: 5, borderRadius: 10, alignSelf: 'center', marginBottom: 25 },
+  handle: { width: 36, height: 4, borderRadius: 10, alignSelf: 'center', marginBottom: 25, opacity: 0.3 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 30 },
-  title: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  closeBtn: { width: 36, height: 36, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
-  subtitle: { fontSize: 13, marginTop: 2, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
-  options: { gap: 12 },
-  optionCard: { 
-    flexDirection: 'row', 
-    alignItems: 'center', 
-    padding: 20, 
-    borderRadius: 24, 
-    borderWidth: 1.5, 
-    gap: 15,
+  titleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  title: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
+  closeBtn: { width: 40, height: 40, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  subtitle: { fontSize: 11, marginTop: 4, fontWeight: '800', textTransform: 'uppercase', opacity: 0.5, letterSpacing: 1 },
+  briefing: { gap: 18, marginBottom: 35 },
+  infoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  infoText: { fontSize: 13, fontWeight: '700', opacity: 0.8 },
+  chatBtn: { 
+    width: '100%', height: 72, borderRadius: 24, 
+    flexDirection: 'row', justifyContent: 'center', alignItems: 'center', 
+    gap: 12, elevation: 8 
   },
-  iconBox: { width: 48, height: 48, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  optionText: { flex: 1 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  optionTitle: { fontSize: 16, fontWeight: '900' },
-  optionSub: { fontSize: 12, marginTop: 4, fontWeight: '600', lineHeight: 16 },
-  footerNote: { textAlign: 'center', fontSize: 9, fontWeight: '900', marginTop: 35, letterSpacing: 1.2 }
+  chatBtnText: { fontWeight: '900', fontSize: 14, letterSpacing: 1.5 },
+  footer: { marginTop: 30, paddingHorizontal: 10 },
+  footerNote: { textAlign: 'center', fontSize: 9, fontWeight: '900', letterSpacing: 1.2, lineHeight: 14 }
 });

@@ -1,29 +1,28 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { 
   Dimensions, 
   Image, 
   StyleSheet, 
   TouchableOpacity, 
   ActivityIndicator,
-  Platform
+  Platform 
 } from 'react-native';
-import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { 
   ArrowRight, 
   Camera, 
   Play, 
   ShoppingBag, 
-  Sparkles, 
   X, 
   Zap, 
   ShieldCheck, 
-  BadgeCheck 
+  TrendingUp,
+  UserCheck
 } from 'lucide-react-native';
 
-// 🏛️ Sovereign Components
+// App Connection
 import { useUserStore } from '../src/store/useUserStore';
 import { View, Text } from '../src/components/Themed';
 import Colors from '../src/constants/Colors';
@@ -32,174 +31,259 @@ import { useColorScheme } from '../src/components/useColorScheme';
 const { width, height } = Dimensions.get('window');
 
 /**
- * 🏰 POST DISPATCHER v79.1 (Pure Build Hardened)
- * Audited: Section I Identity Gates & Section VI Economic Standing.
- * Logic: Strict funneling for Buyers, Expired Merchants, and Unverified Identities.
+ * 🏰 POST SCREEN v97.0
+ * Purpose: Central hub for sellers to post products, videos, or stories.
+ * Security: Checks account status, subscription, and verification before allowing posts.
  */
 export default function PostScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
   const { profile, loading: userLoading, refreshUserData } = useUserStore();
+  const [isSyncing, setIsSyncing] = useState(true);
 
   useEffect(() => {
-    refreshUserData(); 
+    const checkAccountStatus = async () => {
+      setIsSyncing(true);
+      await refreshUserData();
+      setIsSyncing(false);
+    };
+    checkAccountStatus();
   }, []);
 
-  const handleAction = (path: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    router.push(path as any);
-  };
-
-  if (userLoading) {
+  if (userLoading || isSyncing) {
     return (
       <View style={[styles.loadingScreen, { backgroundColor: theme.background }]}>
-        <ActivityIndicator color={Colors.brand.emerald} />
+        <ActivityIndicator color={Colors.brand.emerald} size="large" />
+        <Text style={styles.syncText}>CHECKING ACCOUNT STATUS...</Text>
       </View>
     );
   }
 
-  // 🛡️ SECURITY REGISTRY PROBE (Manifest v79.1)
+  // 🛡️ SECURITY CHECKS
   const isMerchant = profile?.is_seller === true;
-  const isVerified = profile?.is_verified === true;
-  const isTrialActive = profile?.seller_trial_ends_at 
-    ? new Date(profile.seller_trial_ends_at) > new Date() 
-    : false;
-  const hasActivePlan = profile?.subscription_plan && profile.subscription_plan !== 'none';
-  const hasAccess = isTrialActive || hasActivePlan;
+  const isIdentityVerified = profile?.verification_status === 'verified';
+  
+  // TRIAL CHECK: 14-day free window
+  let isTrialActive = false;
+  if (profile?.trial_ends_at) {
+    try {
+      const trialExpiry = new Date(profile.trial_ends_at);
+      isTrialActive = trialExpiry > new Date() && !isNaN(trialExpiry.getTime());
+    } catch (error) {
+      isTrialActive = false;
+    }
+  }
+  
+  // SUBSCRIPTION CHECK
+  const plan = profile?.subscription_plan?.toLowerCase() || 'none';
+  const isExpired = profile?.subscription_expiry ? new Date(profile.subscription_expiry) < new Date() : false;
+  
+  const hasActivePlan = (plan === 'standard' || plan === 'diamond') && !isExpired;
+  const hasSellerAccess = isTrialActive || hasActivePlan;
 
   /**
-   * 🎭 GATE 1: BUYER CONVERSION
-   * Logic: If not a merchant, encourage them to open a shop.
+   * 🎭 GATE 1: UPGRADE TO SELLER
+   * Shown if the user is only a customer.
    */
   if (!isMerchant) {
     return (
-      <UpsellGate 
-        image="https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=2000"
-        title="START YOUR"
-        accent="BRAND."
-        description="Only verified merchants can post. Open your shop to start selling and reach customers directly on WhatsApp."
-        btnText="BECOME A MERCHANT"
-        onPress={() => handleAction('/onboarding/role-setup')}
+      <GateScreen 
+        icon={<TrendingUp size={42} color={Colors.brand.emerald} />}
+        title="START YOUR BRAND"
+        description={"You're currently browsing as a customer, but you can start selling today. Activate your seller profile to list products and reach shoppers.\n\nOpening your shop allows you to:\n1. Build a professional online storefront\n2. Post videos and story updates"}        
+        btnText="OPEN MY SHOP"
+        onPress={() => router.push('/onboarding/role-setup')}
         router={router}
+        theme={theme}
+        accentColor={Colors.brand.emerald}
+        insets={insets}
       />
     );
   }
 
   /**
-   * 💰 GATE 2: ECONOMIC STANDING (Subscription)
-   * Logic: If merchant is inactive (expired trial/no plan).
+   * 💰 GATE 2: RENEW SUBSCRIPTION
+   * Shown if the trial or plan has expired.
    */
-  if (!hasAccess) {
+  if (!hasSellerAccess) {
     return (
-      <UpsellGate 
-        image="https://images.unsplash.com/photo-1441986300917-64674bd600d8?q=80&w=2000"
-        title="RENEW YOUR"
-        accent="ACCESS."
-        description="Your commercial access has expired. Renew your subscription to keep deploying products to the marketplace."
-        btnText="VIEW PLANS"
-        onPress={() => handleAction('/seller/subscription')}
+      <GateScreen 
+        icon={<Zap size={42} color={Colors.brand.emerald} fill={Colors.brand.emerald} />}
+        title="RENEW ACCESS"
+        description="Your subscription has ended. Your shop is currently in view-only mode. To resume posting new products and videos, please renew your plan.\n\nRenewing allows you to:\n1. Keep items visible in the marketplace\n2. Share new products to the local feed."
+        btnText="SEE PLANS"
+        onPress={() => router.push('/seller/subscription')}
         router={router}
+        theme={theme}
+        accentColor={Colors.brand.emerald}
+        insets={insets}
       />
     );
   }
 
   /**
-   * 🛡️ GATE 3: IDENTITY VETTING (Verification)
-   * Logic: Merchant is active but has not completed Face/ID scan.
+   * 🛡️ GATE 3: VERIFICATION
+   * Safety check before the first post.
    */
-  if (!isVerified) {
+  if (!isIdentityVerified) {
     return (
-      <View style={styles.upsellContainer}>
-        <Image source={{ uri: 'https://images.unsplash.com/photo-1521334885634-95b210024ed4?q=80&w=2000' }} style={styles.upsellBg} />
-        <BlurView intensity={65} tint="dark" style={StyleSheet.absoluteFill} />
-        <SafeAreaView style={styles.upsellContent}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtnCircle}><X color="white" size={24} strokeWidth={3} /></TouchableOpacity>
-          <View style={styles.upsellBody}>
-            <View style={[styles.crownBadge, { backgroundColor: 'rgba(59, 130, 246, 0.25)' }]}><ShieldCheck size={32} color="#3B82F6" /></View>
-            <Text style={styles.upsellTitle}>IDENTITY{"\n"}<Text style={{ color: '#3B82F6', fontStyle: 'italic' }}>REQUIRED.</Text></Text>
-            <Text style={styles.upsellSub}>To keep StoreLink safe, you must verify your identity before you can post cinematic content or products.</Text>
-            <TouchableOpacity style={styles.startBtn} onPress={() => handleAction('/seller/verification')}>
-              <Text style={styles.startBtnText}>GET VERIFIED</Text>
-              <BadgeCheck size={18} color="#111827" strokeWidth={2.5} />
-            </TouchableOpacity>
-          </View>
-        </SafeAreaView>
-      </View>
+      <GateScreen 
+        icon={<UserCheck size={42} color="#3B82F6" />}
+        title="IDENTITY CHECK"
+        description={"To keep our community safe, we require all sellers to verify their identity. Verified sellers build more trust and sell items faster.\n\nProceed to:\n1. Upload your identity documents\n2. Complete a quick photo scan\n3. Start posting once approved."}        
+        btnText="START VERIFICATION"
+        onPress={() => router.push('/seller/verification')}
+        router={router}
+        theme={theme}
+        accentColor="#3B82F6"
+        insets={insets}
+      />
     );
   }
 
-  /**
-   * 🏛️ AUTHORIZED HUB (The Creation Center)
-   */
   return (
-    <View style={[styles.creatorContainer, { backgroundColor: theme.background }]}>
-      <SafeAreaView style={{backgroundColor: 'transparent'}}>
-        <View style={[styles.creatorHeader, { borderBottomColor: theme.border }]}>
-           <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
-              <X color={theme.text} size={28} strokeWidth={2.5} />
-           </TouchableOpacity>
-           <Text style={[styles.creatorTitle, { color: theme.text }]}>CREATE DROP</Text>
-           <View style={{ width: 28 }} />
-        </View>
-      </SafeAreaView>
+    <View style={[styles.creatorContainer, { backgroundColor: theme.background, paddingTop: insets.top }]}>
+      {/* HEADER */}
+      <View style={[styles.creatorHeader, { borderBottomColor: theme.border }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+            <X color={theme.text} size={28} strokeWidth={2.5} />
+          </TouchableOpacity>
+          <Text style={[styles.creatorTitle, { color: theme.text }]}>NEW POST</Text>
+          <View style={{ width: 28 }} />
+      </View>
 
-      <View style={[styles.optionsList, { backgroundColor: 'transparent' }]}>
-          <Text style={[styles.instruction, { color: theme.subtext }]}>WHAT ARE YOU POSTING?</Text>
+      <View style={styles.optionsList}>
+          <Text style={[styles.instruction, { color: theme.subtext }]}>WHAT ARE YOU SHARING?</Text>
 
           <ActionItem 
             title="PRODUCT LISTING"
-            sub="Add a permanent item to your shop catalog"
+            sub="Add a new item to your store"
             icon={<ShoppingBag color={theme.text} size={26} strokeWidth={2.2} />}
-            onPress={() => handleAction('/seller/post-product')}
+            onPress={() => router.push('/seller/post-product')}
             theme={theme}
           />
 
           <ActionItem 
             title="VIDEO REEL"
-            sub="Share a vertical video to the explore feed"
+            sub="Share a short video to the feed"
             icon={<Play color={Colors.brand.emerald} fill={Colors.brand.emerald} size={26} />}
-            onPress={() => handleAction('/seller/post-reel')}
+            onPress={() => router.push('/seller/post-reel')}
             activeColor={Colors.brand.emerald + '15'}
             theme={theme}
           />
 
           <ActionItem 
-            title="12-HOUR DROP"
-            sub="Post a temporary story for your followers"
+            title="STORY DROP"
+            sub="Share a temporary 12-hour update"
             icon={<Camera color={Colors.brand.gold} fill={Colors.brand.gold} size={26} />}
-            onPress={() => handleAction('/seller/post-story')}
+            onPress={() => router.push('/seller/post-story')}
             activeColor={Colors.brand.gold + '15'}
             theme={theme}
           />
       </View>
 
-      <View style={[styles.creatorFooter, { backgroundColor: 'transparent' }]}>
-          <Zap size={14} color={Colors.brand.emerald} fill={Colors.brand.emerald} />
-          <Text style={[styles.footerNote, { color: Colors.brand.emerald }]}>UPLOADING TO THE MARKETPLACE</Text>
+      <View style={[styles.creatorFooter, { paddingBottom: insets.bottom + 20 }]}>
+          <ShieldCheck size={14} color={Colors.brand.emerald} />
+          <Text style={[styles.footerNote, { color: Colors.brand.emerald }]}> ACCOUNT VERIFIED & ACTIVE </Text>
       </View>
     </View>
   );
 }
 
-const UpsellGate = ({ image, title, accent, description, btnText, onPress, router }: any) => (
-  <View style={styles.upsellContainer}>
-    <Image source={{ uri: image }} style={styles.upsellBg} />
-    <BlurView intensity={45} tint="dark" style={StyleSheet.absoluteFill} />
-    <SafeAreaView style={styles.upsellContent}>
-      <TouchableOpacity onPress={() => router.back()} style={styles.closeBtnCircle}><X color="white" size={24} strokeWidth={3} /></TouchableOpacity>
-      <View style={styles.upsellBody}>
-          <View style={styles.crownBadge}><Sparkles size={32} color={Colors.brand.emerald} fill={Colors.brand.emerald} /></View>
-          <Text style={styles.upsellTitle}>{title}{"\n"}<Text style={{ color: Colors.brand.emerald, fontStyle: 'italic' }}>{accent}</Text></Text>
-          <Text style={styles.upsellSub}>{description}</Text>
-          <TouchableOpacity style={styles.startBtn} onPress={onPress}>
-            <Text style={styles.startBtnText}>{btnText}</Text>
-            <ArrowRight size={18} color="#111827" strokeWidth={3} />
+const GateScreen = ({ 
+  icon, 
+  title, 
+  description, 
+  btnText, 
+  onPress, 
+  router, 
+  accentColor,
+  theme,
+  insets
+}: any) => {
+  return (
+    <View style={[
+      styles.gateContainer, 
+      { 
+        backgroundColor: theme.background,
+        borderColor: accentColor + '30',
+        borderWidth: 2,
+        marginTop: insets.top + 10,
+        marginBottom: insets.bottom + 10
+      }
+    ]}>
+      <TouchableOpacity 
+        onPress={() => router.back()} 
+        style={[styles.closeBtnCircle, { 
+          backgroundColor: theme.surface,
+          borderColor: theme.border,
+          borderWidth: 1,
+        }]}
+        activeOpacity={0.7}
+      >
+        <X color={theme.text} size={24} strokeWidth={3} />
+      </TouchableOpacity>
+      
+      <View style={styles.gateContent}>
+        <View style={[
+          styles.iconPill, 
+          { 
+            backgroundColor: accentColor + '10',
+            borderColor: accentColor + '30',
+            borderWidth: 2,
+          }
+        ]}>
+          {icon}
+        </View>
+        
+        <View style={styles.messageContent}>
+          <Text style={[styles.gateTitle, { color: theme.text }]}>
+            {title}
+          </Text>
+          
+          <View style={[styles.divider, { backgroundColor: accentColor }]} />
+          
+          <Text style={[styles.gateDescription, { color: theme.subtext }]}>
+            {description}
+          </Text>
+          
+          <TouchableOpacity 
+            style={[
+              styles.actionBtn, 
+              { 
+                backgroundColor: accentColor,
+                shadowColor: accentColor,
+              }
+            ]} 
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+              onPress();
+            }}
+            activeOpacity={0.8}
+          >
+            <Text style={styles.actionBtnText}>
+              {btnText.toUpperCase()}
+            </Text>
+            <ArrowRight size={20} color="#FFFFFF" strokeWidth={3} />
           </TouchableOpacity>
+          
+          <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={styles.cancelBtn}
+            activeOpacity={0.6}
+          >
+            <Text style={[styles.cancelText, { color: theme.subtext }]}>
+              Maybe Later
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
-    </SafeAreaView>
-  </View>
-);
+      <View style={[styles.bottomAccent, { backgroundColor: accentColor + '40' }]} />
+    </View>
+  );
+};
 
 const ActionItem = ({ title, sub, icon, onPress, activeColor, theme }: any) => (
   <TouchableOpacity 
@@ -208,11 +292,16 @@ const ActionItem = ({ title, sub, icon, onPress, activeColor, theme }: any) => (
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       onPress();
     }}
+    activeOpacity={0.7}
   >
-    <View style={[styles.iconBox, { backgroundColor: theme.background }, activeColor && { backgroundColor: activeColor }]}>
+    <View style={[
+      styles.iconBox, 
+      { backgroundColor: theme.background }, 
+      activeColor && { backgroundColor: activeColor }
+    ]}>
       {icon}
     </View>
-    <View style={{ flex: 1, marginLeft: 18, backgroundColor: 'transparent' }}>
+    <View style={{ flex: 1, marginLeft: 18 }}>
       <Text style={[styles.optionTitle, { color: theme.text }]}>{title}</Text>
       <Text style={[styles.optionSub, { color: theme.subtext }]}>{sub}</Text>
     </View>
@@ -222,27 +311,30 @@ const ActionItem = ({ title, sub, icon, onPress, activeColor, theme }: any) => (
 
 const styles = StyleSheet.create({
   loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  upsellContainer: { flex: 1, backgroundColor: 'black' },
-  upsellBg: { width, height, position: 'absolute' },
-  upsellContent: { flex: 1, padding: 30 },
-  closeBtnCircle: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'center', alignItems: 'center' },
-  upsellBody: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  crownBadge: { width: 80, height: 80, borderRadius: 32, backgroundColor: 'rgba(16, 185, 129, 0.25)', justifyContent: 'center', alignItems: 'center', marginBottom: 25 },
-  upsellTitle: { fontSize: 48, fontWeight: '900', color: 'white', textAlign: 'center', letterSpacing: -2, lineHeight: 48 },
-  upsellSub: { fontSize: 16, color: 'rgba(255,255,255,0.85)', textAlign: 'center', marginTop: 18, lineHeight: 24, paddingHorizontal: 20, fontWeight: '700' },
-  startBtn: { backgroundColor: 'white', flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 25, paddingVertical: 22, borderRadius: 30, marginTop: 45, width: '100%', justifyContent: 'center' },
-  startBtnText: { fontSize: 13, fontWeight: '900', color: '#111827', letterSpacing: 1.2 },
-
+  syncText: { marginTop: 15, fontSize: 10, fontWeight: '900', letterSpacing: 1.5, color: '#999' },
+  gateContainer: { flex: 1, borderRadius: 32, margin: 16, overflow: 'hidden', elevation: 8 },
+  gateContent: { flex: 1, paddingHorizontal: 25, alignItems: 'center', paddingTop: 30 },
+  iconPill: { width: 90, height: 90, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 30 },
+  closeBtnCircle: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', position: 'absolute', top: 20, right: 20, zIndex: 10 },
+  messageContent: { width: '100%', alignItems: 'center' },
+  gateTitle: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5, textAlign: 'center' },
+  divider: { width: 50, height: 4, borderRadius: 2, marginVertical: 20 },
+  gateDescription: { fontSize: 16, lineHeight: 24, fontWeight: '600', textAlign: 'center', marginBottom: 40, paddingHorizontal: 10 },
+  actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 20, borderRadius: 24, width: '100%', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 6 },
+  actionBtnText: { fontSize: 14, fontWeight: '900', color: '#FFFFFF', letterSpacing: 1 },
+  cancelBtn: { marginTop: 25, padding: 10 },
+  cancelText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.5, opacity: 0.6 },
+  bottomAccent: { height: 6, width: '100%' },
   creatorContainer: { flex: 1 },
-  creatorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, paddingTop: Platform.OS === 'ios' ? 0 : 20, borderBottomWidth: 1 },
+  creatorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1 },
   closeBtn: { width: 40, height: 40, justifyContent: 'center' },
   creatorTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
   optionsList: { padding: 25, gap: 16 },
   instruction: { fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 5 },
-  optionBtn: { flexDirection: 'row', alignItems: 'center', padding: 22, borderRadius: 35, borderWidth: 1.5 },
-  iconBox: { width: 60, height: 60, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  optionBtn: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 32, borderWidth: 1.5 },
+  iconBox: { width: 56, height: 56, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   optionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.5 },
-  optionSub: { fontSize: 11, fontWeight: '700', marginTop: 2 },
-  creatorFooter: { marginTop: 'auto', paddingBottom: 60, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
+  optionSub: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  creatorFooter: { marginTop: 'auto', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
   footerNote: { fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 }
 });
