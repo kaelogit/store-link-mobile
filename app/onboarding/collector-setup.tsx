@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   StyleSheet, TextInput, TouchableOpacity, 
   ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, 
-  Platform, Animated 
+  Platform, Animated, View as RNView
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -69,7 +69,7 @@ const CITIES_BY_STATE: Record<string, string[]> = {
 };
 
 /**
- * 👤 COLLECTOR SETUP SCREEN v82.0
+ * 👤 COLLECTOR SETUP SCREEN v83.0
  * Purpose: Allows shoppers to set up their personal profile.
  * Features: Nigerian State/City search, simple language, and real-time handle checking.
  */
@@ -144,7 +144,8 @@ export default function CollectorSetupScreen() {
   const handleFinish = async () => {
     const finalWhatsapp = isSameAsPhone ? phone : whatsapp;
 
-    if (!fullName || userStatus !== 'available' || phone.length < 10 || !gender || !locationState || !locationCity) {
+    // Validate inputs
+    if (!fullName.trim() || userStatus !== 'available' || phone.length < 10 || !gender || !locationState || !locationCity) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       return Alert.alert("Missing Details", "Please fill in all required fields to complete your profile.");
     }
@@ -152,15 +153,15 @@ export default function CollectorSetupScreen() {
     setLoading(true);
     try {
       const { error } = await supabase.from('profiles').update({
-        full_name: fullName,
-        display_name: fullName,
+        full_name: fullName.trim(),
+        display_name: fullName.trim(),
         slug: slug.toLowerCase().trim(),
-        phone_number: phone,
-        whatsapp_number: finalWhatsapp,
+        phone_number: phone.trim(),
+        whatsapp_number: finalWhatsapp.trim(),
         location_state: locationState,
         location_city: locationCity,
         location: `${locationCity}, ${locationState}`,
-        bio: bio,
+        bio: bio.trim(),
         gender: gender,
         is_seller: false,
         prestige_weight: 1, 
@@ -189,7 +190,11 @@ export default function CollectorSetupScreen() {
         onExplore={() => router.replace('/(tabs)')} 
       />
 
-      <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1 }}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+        style={{ flex: 1 }}
+      >
         <Animated.View style={{ flex: 1, opacity: fadeAnim }}>
           <ScrollView 
             showsVerticalScrollIndicator={false} 
@@ -202,7 +207,7 @@ export default function CollectorSetupScreen() {
             
             <View style={styles.header}>
               <View style={[styles.badge, { backgroundColor: theme.surface }]}>
-                 <Text style={styles.badgeText}>SHOPPER SETUP</Text>
+                  <Text style={styles.badgeText}>SHOPPER SETUP</Text>
               </View>
               <Text style={[styles.title, { color: theme.text }]}>Your{"\n"}<Text style={{ color: Colors.brand.emerald, fontStyle: 'italic' }}>Profile.</Text></Text>
               <Text style={[styles.sub, { color: theme.subtext }]}>Finish setting up to start exploring items near you.</Text>
@@ -403,7 +408,11 @@ export default function CollectorSetupScreen() {
               
               <TouchableOpacity 
                 activeOpacity={0.9}
-                style={[styles.mainBtn, { backgroundColor: theme.text }, (loading || userStatus !== 'available' || !locationState || !locationCity) && styles.btnDisabled]} 
+                style={[
+                    styles.mainBtn, 
+                    { backgroundColor: theme.text }, 
+                    (loading || userStatus !== 'available' || !locationState || !locationCity) && styles.btnDisabled
+                ]} 
                 onPress={handleFinish}
                 disabled={loading || userStatus !== 'available' || !locationState || !locationCity}
               >

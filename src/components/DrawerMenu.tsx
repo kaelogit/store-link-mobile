@@ -1,15 +1,16 @@
 import React from 'react';
 import { 
   StyleSheet, Modal, TouchableOpacity, 
-  ScrollView, Platform, Dimensions 
+  ScrollView, Platform, Dimensions, View as RNView 
 } from 'react-native';
 import { 
   LogOut, ShieldCheck, ChevronRight, LayoutDashboard, 
   ShoppingBag, Coins, X, Heart, Truck,
-  Settings2, HelpCircle, Package 
+  Settings2, HelpCircle, Package, Gem, LifeBuoy
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+import { BlurView } from 'expo-blur';
 
 // App Components
 import { supabase } from '../lib/supabase';
@@ -17,7 +18,7 @@ import { View, Text } from './Themed';
 import Colors from '../constants/Colors';
 import { useColorScheme } from './useColorScheme';
 
-const { height } = Dimensions.get('window');
+const { height, width } = Dimensions.get('window');
 
 interface DrawerMenuProps {
   isOpen: boolean;
@@ -26,9 +27,9 @@ interface DrawerMenuProps {
 }
 
 /**
- * 🏰 DRAWER MENU v98.0
- * Purpose: Main navigation hub for account settings and store management.
- * Features: Shows different options depending on whether the user is a buyer or seller.
+ * 🏰 DRAWER MENU v100.0 (High-End Edition)
+ * Purpose: Central immersive navigation for the StoreLink ecosystem.
+ * Features: Frosted glass backdrop, calibrated haptics, and adaptive seller logic.
  */
 export const DrawerMenu = ({ isOpen, onClose, isSeller }: DrawerMenuProps) => {
   const router = useRouter();
@@ -36,9 +37,12 @@ export const DrawerMenu = ({ isOpen, onClose, isSeller }: DrawerMenuProps) => {
   const theme = Colors[colorScheme ?? 'light'];
 
   const navigateTo = (path: string) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    Haptics.selectionAsync();
     onClose();
-    router.push(path as any);
+    // Use timeout to allow modal animation to clear before heavy route transition
+    setTimeout(() => {
+        router.push(path as any);
+    }, 100);
   };
 
   const handleLogout = async () => {
@@ -48,131 +52,150 @@ export const DrawerMenu = ({ isOpen, onClose, isSeller }: DrawerMenuProps) => {
     router.replace('/auth/login');
   };
 
-  if (!isOpen) return null;
-
   return (
     <Modal 
       visible={isOpen} 
       transparent 
       animationType="slide" 
       onRequestClose={onClose}
+      statusBarTranslucent
     >
-      <View style={styles.overlay}>
-        <TouchableOpacity 
-          style={styles.dismiss} 
-          onPress={onClose} 
-          activeOpacity={1} 
-        />
+      <View style={styles.masterContainer}>
+        {/* 💎 GLASS BACKDROP */}
+        <BlurView 
+            intensity={Platform.OS === 'ios' ? 30 : 60} 
+            tint="dark" 
+            style={StyleSheet.absoluteFill}
+        >
+          <TouchableOpacity 
+            style={styles.dismiss} 
+            onPress={onClose} 
+            activeOpacity={1} 
+          />
+        </BlurView>
         
         <View style={[styles.content, { backgroundColor: theme.background }]}>
-          {/* Pull handle for visual cue */}
-          <View style={[styles.handle, { backgroundColor: theme.border }]} />
+          {/* DRAG INDICATOR */}
+          <RNView style={[styles.handle, { backgroundColor: theme.border }]} />
           
           <ScrollView 
             showsVerticalScrollIndicator={false} 
-            contentContainerStyle={[styles.scrollArea, { backgroundColor: 'transparent' }]}
+            contentContainerStyle={styles.scrollArea}
           >
-            <View style={[styles.headerRow, { backgroundColor: 'transparent' }]}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>MENU</Text>
-              <TouchableOpacity onPress={onClose} style={styles.closeBtn}>
-                <X size={22} color={theme.subtext} strokeWidth={2.5} />
+            <RNView style={styles.headerRow}>
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>EXPLORE HUB</Text>
+              <TouchableOpacity onPress={onClose} style={[styles.closeBtn, { backgroundColor: theme.surface }]}>
+                <X size={20} color={theme.text} strokeWidth={2.5} />
               </TouchableOpacity>
-            </View>
+            </RNView>
 
-            {/* 🛠️ SHOP MANAGEMENT: Only visible for Sellers */}
+            {/* 🛠️ SHOP MANAGEMENT: The Seller Power Suite */}
             {isSeller ? (
-              <View style={[styles.menuGroup, { backgroundColor: 'transparent' }]}>
-                <Text style={[styles.groupLabel, { color: theme.subtext }]}>SHOP MANAGEMENT</Text>
-                <MenuLink 
-                  theme={theme}
-                  icon={<Package size={20} color={Colors.brand.emerald} />} 
-                  label="My Inventory" 
-                  sub="Manage items & pricing"
-                  onPress={() => navigateTo('/seller/inventory')} 
-                />
+              <RNView style={styles.menuGroup}>
+                <Text style={[styles.groupLabel, { color: theme.subtext }]}>Merchant Terminal</Text>
                 <MenuLink 
                   theme={theme}
                   icon={<LayoutDashboard size={20} color={Colors.brand.emerald} />} 
                   label="Sales Dashboard" 
-                  sub="Track your earnings"
+                  sub="Revenue & analytics"
                   onPress={() => navigateTo('/seller/dashboard')} 
                 />
                 <MenuLink 
                   theme={theme}
-                  icon={<Truck size={20} color={theme.text} />} 
-                  label="Shipping" 
-                  sub="Manage your deliveries"
-                  onPress={() => navigateTo('/seller/logistics')} 
+                  icon={<Package size={20} color={Colors.brand.emerald} />} 
+                  label="My Inventory" 
+                  sub="Manage products"
+                  onPress={() => navigateTo('/seller/inventory')} 
                 />
                 <MenuLink 
                   theme={theme}
-                  icon={<ShieldCheck size={20} color="#3B82F6" />} 
-                  label="Shop Status" 
-                  sub="Verification details"
-                  onPress={() => navigateTo('/seller/verification')} 
+                  icon={<Gem size={20} color="#8B5CF6" />} 
+                  label="Shop Tier" 
+                  sub="Diamond & Standard status"
+                  onPress={() => navigateTo('/subscription')} 
                 />
-              </View>
+                <MenuLink 
+                  theme={theme}
+                  icon={<Truck size={20} color={theme.text} />} 
+                  label="Logistics" 
+                  sub="Order fulfillment"
+                  onPress={() => navigateTo('/seller/logistics')} 
+                />
+              </RNView>
             ) : (
-              /* 🚀 UPSELL: Encourage buyers to start selling */
               <TouchableOpacity 
-                style={[styles.onboardingBanner, { backgroundColor: theme.text, borderColor: theme.border }]}
+                activeOpacity={0.9}
+                style={[styles.onboardingBanner, { backgroundColor: theme.text }]}
                 onPress={() => navigateTo('/onboarding/setup')}
               >
-                <View style={{ flex: 1, backgroundColor: 'transparent' }}>
-                    <Text style={[styles.bannerTitle, { color: theme.background }]}>Start Selling</Text>
-                    <Text style={[styles.bannerSub, { color: theme.background + '80' }]}>Open your shop and reach more customers.</Text>
-                </View>
+                <RNView style={{ flex: 1 }}>
+                    <Text style={[styles.bannerTitle, { color: theme.background }]}>Become a Seller</Text>
+                    <Text style={[styles.bannerSub, { color: theme.background, opacity: 0.7 }]}>Open your shop and join the marketplace.</Text>
+                </RNView>
                 <ChevronRight size={18} color={theme.background} strokeWidth={3} />
               </TouchableOpacity>
             )}
 
-            {/* 🛒 PERSONAL HUB */}
-            <View style={[styles.menuGroup, { backgroundColor: 'transparent' }]}>
-              <Text style={[styles.groupLabel, { color: theme.subtext }]}>PERSONAL</Text>
+            {/* 🛒 PERSONAL SUITE */}
+            <RNView style={styles.menuGroup}>
+              <Text style={[styles.groupLabel, { color: theme.subtext }]}>Account</Text>
+              
+              {!isSeller && (
+                <MenuLink 
+                  theme={theme}
+                  icon={<Gem size={20} color="#8B5CF6" />} 
+                  label="Diamond Badge" 
+                  sub="Premium VIP status"
+                  onPress={() => navigateTo('/subscription')} 
+                />
+              )}
+
               <MenuLink 
                 theme={theme}
                 icon={<Coins size={20} color={Colors.brand.gold} fill={Colors.brand.gold} />} 
                 label="My Wallet" 
-                sub="View your coin balance"
+                sub="Earnings & transactions"
                 onPress={() => navigateTo('/wallet')} 
               />
               <MenuLink 
                 theme={theme}
                 icon={<ShoppingBag size={20} color={theme.text} />} 
-                label="My Orders" 
-                sub="History and tracking"
+                label="My Purchases" 
+                sub="Order history"
                 onPress={() => navigateTo('/orders')} 
               />
               <MenuLink 
                 theme={theme}
                 icon={<Heart size={20} color="#EF4444" />} 
-                label="Saved Items" 
-                sub="Your personalized wishlist"
+                label="Wishlist" 
+                sub="Your saved discoveries"
                 onPress={() => navigateTo('/wishlist')} 
               />
-            </View>
+            </RNView>
 
-            <View style={[styles.divider, { backgroundColor: theme.surface }]} />
+            <RNView style={[styles.divider, { backgroundColor: theme.surface }]} />
 
-            {/* ⚙️ SYSTEM SETTINGS */}
-            <View style={[styles.menuGroup, { backgroundColor: 'transparent' }]}>
+            {/* ⚙️ SYSTEM & SUPPORT */}
+            <RNView style={styles.menuGroup}>
               <MenuLink 
                 theme={theme}
                 icon={<Settings2 size={20} color={theme.subtext} />} 
-                label="App Settings" 
+                label="Settings" 
                 onPress={() => navigateTo('/settings')} 
               />
               <MenuLink 
                 theme={theme}
-                icon={<HelpCircle size={20} color={theme.subtext} />} 
+                icon={<LifeBuoy size={20} color={theme.subtext} />} 
                 label="Help & Support" 
-                onPress={() => navigateTo('/activity/notifications')} 
+                onPress={() => navigateTo('/activity')} // Updated to modern activity/notifications
               />
-            </View>
+            </RNView>
 
             <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-              <LogOut color="#EF4444" size={20} strokeWidth={2.5} />
-              <Text style={styles.logoutText}>Log Out</Text>
+              <RNView style={styles.logoutCircle}>
+                <LogOut color="#EF4444" size={18} strokeWidth={2.5} />
+              </RNView>
+              <Text style={styles.logoutText}>Sign Out</Text>
             </TouchableOpacity>
           </ScrollView>
         </View>
@@ -182,47 +205,115 @@ export const DrawerMenu = ({ isOpen, onClose, isSeller }: DrawerMenuProps) => {
 };
 
 const MenuLink = ({ icon, label, sub, onPress, theme }: any) => (
-  <TouchableOpacity style={[styles.menuItem, { backgroundColor: 'transparent' }]} onPress={onPress}>
-    <View style={[styles.iconBox, { backgroundColor: theme.surface }]}>{icon}</View>
-    <View style={{ flex: 1, backgroundColor: 'transparent' }}>
+  <TouchableOpacity 
+    style={styles.menuItem} 
+    onPress={onPress}
+    activeOpacity={0.6}
+  >
+    <RNView style={[styles.iconBox, { backgroundColor: theme.surface }]}>{icon}</RNView>
+    <RNView style={{ flex: 1 }}>
       <Text style={[styles.menuLabel, { color: theme.text }]}>{label}</Text>
       {sub && <Text style={[styles.menuSub, { color: theme.subtext }]}>{sub}</Text>}
-    </View>
+    </RNView>
     <ChevronRight size={14} color={theme.border} strokeWidth={3} />
   </TouchableOpacity>
 );
 
 const styles = StyleSheet.create({
-  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  masterContainer: { flex: 1, justifyContent: 'flex-end' },
   dismiss: { flex: 1 },
   content: { 
-    borderTopLeftRadius: 45, 
-    borderTopRightRadius: 45, 
-    height: height * 0.9,
+    borderTopLeftRadius: 40, 
+    borderTopRightRadius: 40, 
+    height: height * 0.88,
+    width: '100%',
     paddingHorizontal: 25,
+    ...Platform.select({
+        ios: { shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 20 },
+        android: { elevation: 20 }
+    })
   },
-  scrollArea: { paddingBottom: 60 },
-  handle: { width: 40, height: 5, borderRadius: 10, alignSelf: 'center', marginVertical: 18 },
-  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 25 },
-  sectionTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2.5 },
-  closeBtn: { padding: 5 },
-  menuGroup: { marginBottom: 32 },
-  groupLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginBottom: 15, textTransform: 'uppercase' },
-  menuItem: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingVertical: 12 },
-  iconBox: { width: 46, height: 46, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
-  menuLabel: { fontSize: 15, fontWeight: '800' },
-  menuSub: { fontSize: 11, fontWeight: '600', marginTop: 2 },
-  onboardingBanner: { padding: 22, borderRadius: 28, flexDirection: 'row', alignItems: 'center', marginBottom: 35, borderWidth: 1 },
-  bannerTitle: { fontWeight: '900', fontSize: 15, letterSpacing: 0.2 },
-  bannerSub: { fontSize: 11, marginTop: 4, fontWeight: '600' },
-  divider: { height: 1.5, marginBottom: 32 },
+  scrollArea: { 
+    paddingBottom: 60, 
+    backgroundColor: 'transparent' 
+  },
+  handle: { 
+    width: 32, 
+    height: 4, 
+    borderRadius: 10, 
+    alignSelf: 'center', 
+    marginVertical: 15,
+    opacity: 0.2
+  },
+  headerRow: { 
+    flexDirection: 'row', 
+    justifyContent: 'space-between', 
+    alignItems: 'center', 
+    marginBottom: 30,
+    marginTop: 5
+  },
+  sectionTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 2 },
+  closeBtn: { 
+    width: 36, 
+    height: 36, 
+    borderRadius: 12, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  menuGroup: { marginBottom: 35 },
+  groupLabel: { 
+    fontSize: 11, 
+    fontWeight: '800', 
+    letterSpacing: 1, 
+    marginBottom: 15, 
+    textTransform: 'uppercase',
+    opacity: 0.6
+  },
+  menuItem: { 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    gap: 16, 
+    paddingVertical: 10,
+    marginBottom: 4
+  },
+  iconBox: { 
+    width: 48, 
+    height: 48, 
+    borderRadius: 16, 
+    justifyContent: 'center', 
+    alignItems: 'center' 
+  },
+  menuLabel: { fontSize: 16, fontWeight: '700', letterSpacing: -0.2 },
+  menuSub: { fontSize: 12, fontWeight: '500', marginTop: 1, opacity: 0.6 },
+  
+  onboardingBanner: { 
+    padding: 24, 
+    borderRadius: 24, 
+    flexDirection: 'row', 
+    alignItems: 'center', 
+    marginBottom: 35,
+    elevation: 4
+  },
+  bannerTitle: { fontWeight: '900', fontSize: 16, letterSpacing: -0.2 },
+  bannerSub: { fontSize: 12, marginTop: 4, fontWeight: '600', lineHeight: 18 },
+  
+  divider: { height: 1, marginBottom: 35, opacity: 0.5 },
+  
   logoutBtn: { 
     flexDirection: 'row', 
     alignItems: 'center', 
-    gap: 12, 
+    gap: 14, 
     marginTop: 10, 
-    paddingVertical: 15, 
+    paddingVertical: 10,
     marginBottom: Platform.OS === 'ios' ? 40 : 20 
   },
-  logoutText: { color: '#EF4444', fontWeight: '900', fontSize: 14, letterSpacing: 0.5 }
+  logoutCircle: {
+    width: 40,
+    height: 40,
+    borderRadius: 12,
+    backgroundColor: 'rgba(239, 68, 68, 0.1)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  logoutText: { color: '#EF4444', fontWeight: '800', fontSize: 15, letterSpacing: -0.2 }
 });

@@ -1,14 +1,13 @@
-import React, { useMemo, useRef, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, Dimensions, TextInput, Platform,
-  Modal, RefreshControl
+  Dimensions, TextInput, Modal, RefreshControl, Platform
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router'; 
+import { useRouter, useFocusEffect } from 'expo-router'; 
 import { 
-  Search, Zap, Trash2, CheckCheck, 
-  Archive, User, ArchiveRestore, Gem, Inbox
+  Search, Zap, Trash2, Gem, 
+  MessageSquare, ChevronRight, Store
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { formatDistanceToNow } from 'date-fns';
@@ -24,13 +23,14 @@ import { useUserStore } from '../../src/store/useUserStore';
 import { View, Text } from '../../src/components/Themed';
 import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
+import { Profile } from '../../src/types';
 
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 MESSAGES HUB v103.0
- * Purpose: A high-speed inbox for managing customer and store conversations.
- * Features: Real-time chat previews, archive management, and premium user badges.
+ * 🏰 UNIFIED INBOX v113.0
+ * Purpose: Central communication hub for all trade negotiations.
+ * Features: Diamond Glow UX, Auto-Refresh on Focus, and Role Detection.
  */
 export default function UnifiedInbox() {
   const router = useRouter();
@@ -39,93 +39,63 @@ export default function UnifiedInbox() {
   const { profile: currentUser } = useUserStore();
   const queryClient = useQueryClient();
   
-  const [activeTab, setActiveTab] = useState<'all' | 'requests' | 'archived'>('all');
   const [search, setSearch] = useState("");
   const [selectedThread, setSelectedThread] = useState<any>(null);
   const [showOptions, setShowOptions] = useState(false);
 
-  /** 🛡️ UPDATING CHATS: Fetching latest conversations */
+  /** 📡 DATA SYNC: Optimized for Unified Subscription */
   const { 
     data: threads = [], 
     isLoading, 
     isRefetching, 
     refetch 
   } = useQuery({
-    queryKey: ['inbox-threads', activeTab, currentUser?.id],
+    queryKey: ['inbox-threads', currentUser?.id],
     queryFn: async () => {
       if (!currentUser?.id) return [];
       
-      const isP1 = `participant_one.eq.${currentUser.id}`;
-      const isP2 = `participant_two.eq.${currentUser.id}`;
-      
-      let query = supabase
-        .from('conversations')
+      const { data, error } = await supabase
+        .from('chats')
         .select(`
           *,
-          seller:participant_one(id, display_name, logo_url, slug, subscription_plan, is_seller),
-          buyer:participant_two(id, display_name, logo_url, slug, is_seller)
+          seller:seller_id(id, display_name, slug, logo_url, subscription_plan, is_seller),
+          buyer:buyer_id(id, display_name, slug, logo_url, subscription_plan, is_seller)
         `)
-        .or(`${isP1},${isP2}`)
+        .or(`buyer_id.eq.${currentUser.id},seller_id.eq.${currentUser.id}`)
         .order('updated_at', { ascending: false });
 
-      // Sort by the selected tab
-      if (activeTab === 'all') {
-        query = query.eq(isP1 ? 'is_archived_by_p1' : 'is_archived_by_p2', false).eq('is_request', false);
-      } else if (activeTab === 'requests') {
-        query = query.eq('is_request', true);
-      } else if (activeTab === 'archived') {
-        query = query.eq(isP1 ? 'is_archived_by_p1' : 'is_archived_by_p2', true);
-      }
-
-      const { data, error } = await query;
       if (error) throw error;
-
-      // Pre-load profile photos for the top 10 conversations
-      data?.slice(0, 10).forEach((t: any) => {
-        const partner = t.participant_one === currentUser.id ? t.buyer : t.seller;
-        if (partner?.logo_url) Image.prefetch(partner.logo_url);
-      });
-
       return data || [];
     },
-    staleTime: 1000 * 60, 
+    enabled: !!currentUser?.id, // Only run if user is logged in
   });
 
-  /** 🛡️ INBOX CONTROLS: Managing specific chats */
-  const handleAction = async (action: 'read' | 'archive' | 'delete' | 'unarchive') => {
-    if (!selectedThread || !currentUser) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    const isP1 = selectedThread.participant_one === currentUser.id;
-    
-    // 1. Instant Updates: Refresh the screen immediately
-    queryClient.setQueryData(['inbox-threads', activeTab, currentUser.id], (old: any) => {
-      if (action === 'delete' || action === 'archive' || action === 'unarchive') {
-        return old?.filter((t: any) => t.id !== selectedThread.id);
-      }
-      return old?.map((t: any) => {
-        if (t.id === selectedThread.id && action === 'read') {
-          return { ...t, [isP1 ? 'p1_unread_count' : 'p2_unread_count']: 0 };
-        }
-        return t;
-      });
-    });
+  // ⚡ AUTO-REFRESH: Updates inbox whenever screen comes into focus (e.g. back from chat)
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
 
+  const onRefresh = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    refetch();
+  }, [refetch]);
+
+  const handleAction = async (action: 'delete') => {
+    if (!selectedThread) return;
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     setShowOptions(false);
 
-    // 2. Save changes to the account
     try {
-      if (action === 'delete') {
-        await supabase.from('conversations').delete().eq('id', selectedThread.id);
-      } else {
-        let updateData: any = {};
-        if (action === 'read') updateData[isP1 ? 'p1_unread_count' : 'p2_unread_count'] = 0;
-        if (action === 'archive') updateData[isP1 ? 'is_archived_by_p1' : 'is_archived_by_p2'] = true;
-        if (action === 'unarchive') updateData[isP1 ? 'is_archived_by_p1' : 'is_archived_by_p2'] = false;
-        
-        await supabase.from('conversations').update(updateData).eq('id', selectedThread.id);
-      }
+      await supabase.from('chats').delete().eq('id', selectedThread.id);
+      // Optimistic update
+      queryClient.setQueryData(['inbox-threads', currentUser?.id], (old: any) => 
+        old.filter((t: any) => t.id !== selectedThread.id)
+      );
     } catch (e) {
-      refetch(); // Reload if something goes wrong
+      console.error("Delete failed");
+      refetch(); // Revert on fail
     }
   };
 
@@ -133,172 +103,155 @@ export default function UnifiedInbox() {
     const term = search.toLowerCase().trim();
     if (!term) return threads;
     return threads.filter((t: any) => {
-      const partner = t.participant_one === currentUser?.id ? t.buyer : t.seller;
+      const partner = t.buyer_id === currentUser?.id ? t.seller : t.buyer;
       return partner?.display_name?.toLowerCase().includes(term) || 
-             partner?.slug?.toLowerCase().includes(term) || 
+             partner?.slug?.toLowerCase().includes(term) ||
              t.last_message?.toLowerCase().includes(term);
     });
   }, [threads, search, currentUser?.id]);
 
-  const onRefresh = useCallback(() => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    refetch();
-  }, [refetch]);
+  const renderThread = ({ item }: { item: any }) => {
+    // 🛡️ Safe Partner Logic
+    const partner: Partial<Profile> = item.buyer_id === currentUser?.id ? item.seller : item.buyer;
+    const isDiamond = partner?.subscription_plan === 'diamond';
+    const isSellerPartner = partner?.is_seller; // Are we talking to a shop?
+
+    // Safeguard against deleted users
+    if (!partner) return null;
+
+    return (
+      <TouchableOpacity 
+        activeOpacity={0.7}
+        style={[
+          styles.threadRow, 
+          { borderBottomColor: theme.surface },
+          isDiamond && { backgroundColor: `${Colors.brand.violet}08` }
+        ]}
+        onPress={() => router.push(`/chat/${item.id}`)}
+        onLongPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+          setSelectedThread(item);
+          setShowOptions(true);
+        }}
+      >
+        <View style={styles.avatarContainer}>
+          <View style={[styles.avatarBorder, isDiamond && styles.diamondHalo]}>
+             <Image 
+              source={partner.logo_url || 'https://via.placeholder.com/150'} 
+              style={styles.avatar}
+              transition={200}
+              contentFit="cover"
+             />
+          </View>
+          {isDiamond && (
+            <View style={[styles.gemBadge, { backgroundColor: theme.background }]}>
+              <Gem size={10} color="#8B5CF6" fill="#8B5CF6" />
+            </View>
+          )}
+        </View>
+
+        <View style={styles.threadInfo}>
+          <View style={styles.threadHeader}>
+            <View style={styles.nameRow}>
+              <Text style={[styles.partnerName, { color: theme.text }]} numberOfLines={1}>
+                {partner.display_name?.toUpperCase() || 'MEMBER'}
+              </Text>
+              {isSellerPartner && (
+                <View style={styles.sellerTag}>
+                   <Store size={8} color="#10B981" />
+                   <Text style={styles.sellerTagText}>SHOP</Text>
+                </View>
+              )}
+            </View>
+            <Text style={[styles.timeText, { color: theme.subtext }]}>
+              {formatDistanceToNow(new Date(item.updated_at), { addSuffix: false }).replace('about ', '')}
+            </Text>
+          </View>
+          
+          <View style={styles.lastMsgRow}>
+            <Text 
+              style={[
+                styles.lastMessage, 
+                { color: item.unread_count > 0 ? theme.text : theme.subtext, fontWeight: item.unread_count > 0 ? '700' : '500' }
+              ]} 
+              numberOfLines={1}
+            >
+              {item.last_message || "Start a conversation..."}
+            </Text>
+            {item.unread_count > 0 && (
+              <View style={styles.unreadBadge}>
+                 <Text style={styles.unreadText}>{item.unread_count}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  };
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* HEADER */}
+      
+      {/* 📱 PREMIUM HEADER */}
       <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>MESSAGES</Text>
-        <TouchableOpacity onPress={() => router.push('/(tabs)/explore')}>
-           <Zap size={22} color={Colors.brand.emerald} strokeWidth={2.5} />
+        <View style={styles.headerLeft}>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>MESSAGES</Text>
+          <View style={[styles.countBadge, { backgroundColor: theme.surface }]}>
+             <Text style={[styles.countText, { color: theme.text }]}>{threads.length}</Text>
+          </View>
+        </View>
+        <TouchableOpacity style={styles.zapBtn}>
+           <Zap size={20} color={Colors.brand.emerald} fill={Colors.brand.emerald} />
         </TouchableOpacity>
       </View>
 
-      <View style={styles.searchBarContainer}>
-        <View style={[styles.searchBar, { backgroundColor: theme.surface, borderColor: theme.border, borderWidth: 1 }]}>
+      {/* 🔍 SEARCH */}
+      <View style={styles.searchContainer}>
+        <View style={[styles.searchBar, { backgroundColor: theme.surface }]}>
           <Search size={18} color={theme.subtext} strokeWidth={2.5} />
           <TextInput 
-            placeholder="Search chats..." 
-            placeholderTextColor={theme.subtext}
+            placeholder="Search names or messages..." 
+            placeholderTextColor={theme.subtext + '80'}
             style={[styles.searchInput, { color: theme.text }]}
             value={search}
             onChangeText={setSearch}
+            selectionColor={Colors.brand.emerald}
           />
         </View>
       </View>
 
-      <View style={[styles.tabBar, { borderBottomColor: theme.border }]}>
-        {['all', 'requests', 'archived'].map((tab) => (
-          <TouchableOpacity 
-            key={tab}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              setActiveTab(tab as any);
-            }}
-            style={[styles.tab, activeTab === tab && { borderBottomColor: theme.text }]}
-          >
-            <Text style={[styles.tabText, { color: theme.subtext }, activeTab === tab && { color: theme.text }]}>
-              {tab.toUpperCase()}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
       <FlatList
         data={filteredThreads}
-        keyExtractor={(item) => `thread-${item.id}`}
+        keyExtractor={(item) => item.id}
+        renderItem={renderThread}
         contentContainerStyle={[styles.listContent, { paddingBottom: insets.bottom + 100 }]}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={Colors.brand.emerald} />}
-        
-        initialNumToRender={10}
-        maxToRenderPerBatch={10}
-        windowSize={5}
-
-        renderItem={({ item }) => {
-          const isMeP1 = item.participant_one === currentUser?.id;
-          const partner = isMeP1 ? item.buyer : item.seller;
-          const unreadCount = isMeP1 ? item.p1_unread_count : item.p2_unread_count;
-          const isDiamond = partner?.subscription_plan === 'diamond';
-          
-          return (
-            <TouchableOpacity 
-              style={[styles.threadRow, { borderBottomColor: theme.surface }]}
-              activeOpacity={0.7}
-              onPress={() => router.push(`/chat/${item.id}` as any)}
-              onLongPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-                setSelectedThread(item);
-                setShowOptions(true);
-              }}
-            >
-              <View style={styles.avatarContainer}>
-                <View style={[styles.avatarBorder, isDiamond && { borderColor: '#8B5CF6', borderWidth: 2 }]}>
-                   <Image 
-                    source={partner?.logo_url || 'https://via.placeholder.com/150'} 
-                    style={styles.avatar} 
-                    contentFit="cover"
-                    transition={200}
-                    cachePolicy="memory-disk"
-                   />
-                </View>
-                {isDiamond && (
-                  <View style={[styles.diamondBadge, { backgroundColor: '#8B5CF6', borderColor: theme.background }]}>
-                    <Zap size={8} color="white" fill="white" />
-                  </View>
-                )}
-              </View>
-
-              <View style={styles.threadInfo}>
-                <View style={styles.threadHeader}>
-                  <View style={styles.nameRow}>
-                    <Text style={[styles.partnerName, { color: theme.text }]} numberOfLines={1}>
-                      {(partner?.display_name || partner?.slug || 'Member').toUpperCase()}
-                    </Text>
-                    {isDiamond && <Gem size={10} color="#8B5CF6" fill="#8B5CF6" />}
-                  </View>
-                  <Text style={[styles.timeText, { color: theme.subtext }]}>
-                    {formatDistanceToNow(new Date(item.updated_at), { addSuffix: false })}
-                  </Text>
-                </View>
-                
-                <Text style={[styles.lastMessage, { color: theme.subtext }, unreadCount > 0 && { color: theme.text, fontWeight: '800' }]} numberOfLines={1}>
-                  {item.last_message || "Chat started..."}
-                </Text>
-              </View>
-
-              {unreadCount > 0 && (
-                <View style={[styles.unreadCounter, { backgroundColor: theme.text }]}>
-                   <Text style={[styles.unreadCountText, { color: theme.background }]}>{unreadCount}</Text>
-                </View>
-              )}
-            </TouchableOpacity>
-          );
-        }}
-        ListEmptyComponent={() => {
-          if (isLoading) return null;
-          return (
-            <View style={styles.emptyState}>
-              <Inbox size={48} color={theme.border} strokeWidth={1} />
-              <Text style={[styles.emptyText, { color: theme.subtext }]}>NO MESSAGES IN {activeTab.toUpperCase()}</Text>
-            </View>
-          );
-        }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={isRefetching} onRefresh={onRefresh} tintColor={Colors.brand.emerald} />
+        }
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <MessageSquare size={48} color={theme.surface} strokeWidth={1.5} />
+            <Text style={[styles.emptyTitle, { color: theme.text }]}>Your inbox is empty</Text>
+            <Text style={[styles.emptySub, { color: theme.subtext }]}>
+              Conversations with sellers and buyers will appear here.
+            </Text>
+          </View>
+        }
       />
 
-      {/* INBOX CONTROLS MODAL */}
+      {/* 🎭 OPTIONS MODAL */}
       <Modal visible={showOptions} transparent animationType="fade">
-        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowOptions(false)}>
-          <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill} />
-          <View style={[styles.menuCard, { backgroundColor: theme.background, bottom: insets.bottom + 20 }]}>
-            <Text style={[styles.menuTitle, { color: theme.subtext }]}>CHAT OPTIONS</Text>
-            
-            <MenuOption 
-              icon={<User size={20} color={theme.text}/>} 
-              label="View Profile" 
-              onPress={() => { setShowOptions(false); router.push(`/profile/${selectedThread?.participant_one === currentUser?.id ? selectedThread?.buyer?.id : selectedThread?.seller?.id}`); }} 
-              theme={theme} 
-            />
-            <MenuOption 
-              icon={<CheckCheck size={20} color={theme.text}/>} 
-              label="Mark as Read" 
-              onPress={() => handleAction('read')} 
-              theme={theme} 
-            />
-            <MenuOption 
-              icon={activeTab === 'archived' ? <ArchiveRestore size={20} color="#F59E0B"/> : <Archive size={20} color="#F59E0B"/>} 
-              label={activeTab === 'archived' ? "Move to Primary" : "Archive Chat"} 
-              onPress={() => handleAction(activeTab === 'archived' ? 'unarchive' : 'archive')} 
-              theme={theme} 
-            />
-            <View style={[styles.menuDivider, { backgroundColor: theme.surface }]} />
-            <MenuOption 
-              icon={<Trash2 size={20} color="#EF4444"/>} 
-              label="Delete Chat" 
-              onPress={() => handleAction('delete')} 
-              theme={theme} 
-              isLast 
-            />
+        <TouchableOpacity style={styles.modalOverlay} onPress={() => setShowOptions(false)} activeOpacity={1}>
+          <BlurView intensity={30} style={StyleSheet.absoluteFill} />
+          <View style={[styles.menuCard, { backgroundColor: theme.background, paddingBottom: insets.bottom + 20 }]}>
+            <View style={styles.menuHandle} />
+            <TouchableOpacity style={styles.menuOption} onPress={() => handleAction('delete')}>
+              <View style={styles.deleteCircle}>
+                <Trash2 size={20} color="#FF3B30"/>
+              </View>
+              <Text style={styles.deleteText}>Delete Conversation</Text>
+            </TouchableOpacity>
           </View>
         </TouchableOpacity>
       </Modal>
@@ -306,44 +259,48 @@ export default function UnifiedInbox() {
   );
 }
 
-const MenuOption = ({ icon, label, onPress, theme, isLast }: any) => (
-  <TouchableOpacity onPress={onPress} style={[styles.menuOption, isLast && { marginTop: 5 }]}>
-    {icon}
-    <Text style={[styles.menuLabel, { color: theme.text }, label === 'Delete Chat' && { color: '#EF4444' }]}>{label}</Text>
-  </TouchableOpacity>
-);
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   header: { paddingHorizontal: 25, paddingBottom: 15, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  headerTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
-  searchBarContainer: { paddingHorizontal: 25, marginTop: 5 },
-  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, paddingHorizontal: 16, height: 54, gap: 12 },
-  searchInput: { flex: 1, fontSize: 15, fontWeight: '700' },
-  tabBar: { flexDirection: 'row', paddingHorizontal: 25, gap: 24, marginTop: 20, borderBottomWidth: 1.5 },
-  tab: { paddingBottom: 15, borderBottomWidth: 2.5, borderColor: 'transparent' },
-  tabText: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5 },
-  listContent: { paddingHorizontal: 0 },
-  threadRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 20, paddingHorizontal: 25, borderBottomWidth: 1 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -1 },
+  countBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 },
+  countText: { fontSize: 12, fontWeight: '900' },
+  zapBtn: { width: 44, height: 44, borderRadius: 15, justifyContent: 'center', alignItems: 'center' },
+  
+  searchContainer: { paddingHorizontal: 25, marginBottom: 15 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', borderRadius: 20, paddingHorizontal: 16, height: 52, gap: 12 },
+  searchInput: { flex: 1, fontSize: 15, fontWeight: '600' },
+  
+  listContent: { paddingVertical: 5 },
+  threadRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, paddingHorizontal: 25, borderBottomWidth: 1 },
   avatarContainer: { position: 'relative' },
-  avatarBorder: { padding: 2, borderRadius: 20 },
-  avatar: { width: 56, height: 56, borderRadius: 18 },
-  diamondBadge: { position: 'absolute', bottom: -1, right: -1, width: 20, height: 20, borderRadius: 10, borderWidth: 3, justifyContent: 'center', alignItems: 'center' },
-  threadInfo: { flex: 1, marginLeft: 15, marginRight: 10 },
+  avatarBorder: { padding: 2, borderRadius: 22, borderWidth: 1.5, borderColor: 'transparent' },
+  diamondHalo: { borderColor: '#8B5CF6' },
+  avatar: { width: 56, height: 56, borderRadius: 20 },
+  gemBadge: { position: 'absolute', bottom: -2, right: -2, borderRadius: 8, padding: 4, elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 4 },
+  
+  threadInfo: { flex: 1, marginLeft: 16 },
   threadHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
-  partnerName: { fontSize: 13, fontWeight: '900', letterSpacing: 0.2 },
-  timeText: { fontSize: 9, fontWeight: '800', opacity: 0.5 },
-  lastMessage: { fontSize: 14, fontWeight: '500', opacity: 0.6 },
-  unreadCounter: { width: 22, height: 22, borderRadius: 11, justifyContent: 'center', alignItems: 'center', elevation: 2 },
-  unreadCountText: { fontSize: 10, fontWeight: '900' },
-  modalOverlay: { flex: 1, justifyContent: 'flex-end', padding: 20 },
-  menuCard: { borderRadius: 36, padding: 25, width: '100%', elevation: 20, borderWidth: 1.5, borderColor: 'rgba(255,255,255,0.05)' },
-  menuTitle: { fontSize: 9, fontWeight: '900', letterSpacing: 2, marginBottom: 25, textAlign: 'center', opacity: 0.5 },
-  menuOption: { flexDirection: 'row', alignItems: 'center', paddingVertical: 18, gap: 16 },
-  menuLabel: { fontSize: 15, fontWeight: '900' },
-  menuDivider: { height: 1.5, marginVertical: 5, width: '100%' },
-  emptyState: { padding: 120, alignItems: 'center', gap: 18 },
-  emptyText: { fontSize: 9, fontWeight: '900', letterSpacing: 2, opacity: 0.4 }
+  partnerName: { fontSize: 14, fontWeight: '900', letterSpacing: 0.2 },
+  sellerTag: { backgroundColor: 'rgba(16, 185, 129, 0.1)', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  sellerTagText: { fontSize: 8, fontWeight: '900', color: '#10B981' },
+  timeText: { fontSize: 10, fontWeight: '700', opacity: 0.4 },
+  
+  lastMsgRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  lastMessage: { fontSize: 14, flex: 1, marginRight: 10 },
+  unreadBadge: { backgroundColor: '#10B981', minWidth: 20, height: 20, borderRadius: 10, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 6 },
+  unreadText: { color: 'white', fontSize: 10, fontWeight: '900' },
+
+  modalOverlay: { flex: 1, justifyContent: 'flex-end' },
+  menuCard: { borderTopLeftRadius: 40, borderTopRightRadius: 40, padding: 25, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 20, elevation: 10 },
+  menuHandle: { width: 40, height: 5, borderRadius: 10, backgroundColor: 'rgba(0,0,0,0.05)', alignSelf: 'center', marginBottom: 20 },
+  menuOption: { flexDirection: 'row', alignItems: 'center', gap: 15, paddingVertical: 10 },
+  deleteCircle: { width: 44, height: 44, borderRadius: 15, backgroundColor: '#FF3B3010', justifyContent: 'center', alignItems: 'center' },
+  deleteText: { color: '#FF3B30', fontWeight: '900', fontSize: 15 },
+
+  emptyContainer: { flex: 1, alignItems: 'center', justifyContent: 'center', marginTop: 100, paddingHorizontal: 50 },
+  emptyTitle: { fontSize: 18, fontWeight: '900', marginTop: 20, marginBottom: 10 },
+  emptySub: { fontSize: 14, fontWeight: '500', textAlign: 'center', opacity: 0.5, lineHeight: 20 }
 });

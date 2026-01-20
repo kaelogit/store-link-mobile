@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   StyleSheet, TextInput, TouchableOpacity, 
   ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Animated,
-  ScrollView, Dimensions 
+  ScrollView, Dimensions, Keyboard
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, RefreshCw, MailSearch, LockKeyhole, CheckCircle2, ShieldCheck } from 'lucide-react-native';
-import * as ExpoHaptics from 'expo-haptics';
+import { ArrowLeft, RefreshCw, Lock, CheckCircle2, ShieldCheck } from 'lucide-react-native';
+import * as Haptics from 'expo-haptics';
 
 // 🚀 SPEED ENGINE
 import { useMutation, useQueryClient } from '@tanstack/react-query';
@@ -21,9 +21,9 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 const { width } = Dimensions.get('window');
 
 /**
- * 🔐 VERIFICATION SCREEN v81.0
+ * 🔐 VERIFICATION SCREEN v82.0
  * Purpose: Securely verify the user's email using a 6-digit code.
- * UX: Simple English, automatic submission, and premium animations.
+ * UX: Countdown timer, auto-submission, and spam protection.
  */
 export default function VerifyScreen() {
   const { email, type = 'signup' } = useLocalSearchParams();
@@ -34,10 +34,20 @@ export default function VerifyScreen() {
 
   const [code, setCode] = useState('');
   const [resending, setResending] = useState(false);
+  const [timer, setTimer] = useState(30); // 🛡️ 30s Cooldown
   
   const shakeAnim = useRef(new Animated.Value(0)).current;
   const toastAnim = useRef(new Animated.Value(-100)).current;
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // 🛡️ COUNTDOWN TIMER LOGIC
+  useEffect(() => {
+    let interval: NodeJS.Timeout;
+    if (timer > 0) {
+      interval = setInterval(() => setTimer((prev) => prev - 1), 1000);
+    }
+    return () => clearInterval(interval);
+  }, [timer]);
 
   useEffect(() => {
     if (!email) router.replace('/auth/signup');
@@ -53,7 +63,7 @@ export default function VerifyScreen() {
   };
 
   const triggerErrorShake = () => {
-    ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Error);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     Animated.sequence([
       Animated.timing(shakeAnim, { toValue: 10, duration: 45, useNativeDriver: true }),
       Animated.timing(shakeAnim, { toValue: -10, duration: 45, useNativeDriver: true }),
@@ -65,13 +75,13 @@ export default function VerifyScreen() {
   /** 🚀 VERIFICATION LOGIC */
   const verifyMutation = useMutation({
     mutationFn: async (codeToVerify: string) => {
-      // 1. Check code against our database
+      // 1. Check code against database (Custom OTP Flow)
       const { data: otpData, error: otpError } = await supabase
         .from('otp_verifications')
         .select('*')
         .eq('email', email as string)
         .eq('code', codeToVerify)
-        .single();
+        .maybeSingle(); // Safer than single()
 
       if (otpError || !otpData) throw new Error("The code you entered is invalid or expired.");
 
@@ -86,7 +96,7 @@ export default function VerifyScreen() {
 
       if (profileError) throw profileError;
 
-      // 3. Delete the used code
+      // 3. Clean up the used code
       await supabase.from('otp_verifications').delete().eq('email', email as string);
       
       return true;
@@ -94,7 +104,8 @@ export default function VerifyScreen() {
     onSuccess: async () => {
       await refreshUserData();
       queryClient.invalidateQueries({ queryKey: ['user-profile'] });
-      ExpoHaptics.notificationAsync(ExpoHaptics.NotificationFeedbackType.Success);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Keyboard.dismiss();
       
       if (type === 'recovery') {
         router.replace({ pathname: '/auth/update-password', params: { email } });
@@ -103,6 +114,7 @@ export default function VerifyScreen() {
       }
     },
     onError: (err: any) => {
+      setCode(''); // Clear code on failure
       triggerErrorShake();
       Alert.alert("Verification Failed", err.message);
     }
@@ -116,20 +128,23 @@ export default function VerifyScreen() {
   };
 
   const handleResend = async () => {
-    if (resending || !email) return;
+    if (resending || timer > 0 || !email) return;
+    
     setResending(true);
     try {
       const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
       await supabase.from('otp_verifications').upsert({ email: email as string, code: newOtp }, { onConflict: 'email' });
 
+      // 📧 CUSTOM EMAIL API HANDSHAKE
       await fetch("https://storelink.ng/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, code: newOtp, type: 'VERIFY_SIGNUP' }),
       });
       
-      ExpoHaptics.impactAsync(ExpoHaptics.ImpactFeedbackStyle.Heavy);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
       showToast("NEW CODE SENT");
+      setTimer(30); // Reset cooldown
     } catch (err) {
       Alert.alert("Error", "Could not send a new code. Please try again.");
     } finally {
@@ -156,7 +171,7 @@ export default function VerifyScreen() {
           <Animated.View style={[styles.content, { transform: [{ translateX: shakeAnim }] }]}>
             <View style={styles.header}>
               <View style={[styles.iconBox, { backgroundColor: theme.surface }]}>
-                <LockKeyhole size={36} color={Colors.brand.emerald} strokeWidth={2.5} />
+                <ShieldCheck size={36} color={Colors.brand.emerald} strokeWidth={2.5} />
               </View>
               <Text style={[styles.title, { color: theme.text }]}>Verify Account</Text>
               <Text style={[styles.subtitle, { color: theme.subtext }]}>
@@ -165,6 +180,7 @@ export default function VerifyScreen() {
               </Text>
             </View>
 
+            {/* 🛡️ INPUT MATRIX */}
             <View style={styles.inputContainer}>
               <TextInput
                 style={styles.hiddenInput}
@@ -180,7 +196,7 @@ export default function VerifyScreen() {
                   <View key={i} style={[
                     styles.digitBox, 
                     { backgroundColor: theme.surface, borderColor: theme.border },
-                    code.length === i && { borderColor: Colors.brand.emerald, borderWidth: 3 },
+                    code.length === i && { borderColor: Colors.brand.emerald, borderWidth: 2 },
                     code.length > i && { borderColor: theme.text }
                   ]}>
                     <Text style={[styles.digitText, { color: theme.text }]}>{code[i] || ''}</Text>
@@ -202,20 +218,19 @@ export default function VerifyScreen() {
               )}
             </TouchableOpacity>
 
-            <View style={styles.helpBox}>
-                <MailSearch size={14} color={theme.subtext} />
-                <Text style={[styles.helpText, { color: theme.subtext }]}>
-                  Don't see it? Check your <Text style={styles.bold}>Spam</Text> folder.
-                </Text>
-            </View>
-
-            <TouchableOpacity style={styles.resendBtn} onPress={handleResend} disabled={resending}>
+            <TouchableOpacity 
+              style={[styles.resendBtn, timer > 0 && { opacity: 0.5 }]} 
+              onPress={handleResend} 
+              disabled={resending || timer > 0}
+            >
               {resending ? (
                 <ActivityIndicator size="small" color={theme.text} />
               ) : (
                 <View style={styles.resendRow}>
                     <RefreshCw size={14} color={theme.subtext} />
-                    <Text style={[styles.resendLabel, { color: theme.subtext }]}>SEND A NEW CODE</Text>
+                    <Text style={[styles.resendLabel, { color: theme.subtext }]}>
+                      {timer > 0 ? `RESEND CODE IN ${timer}s` : "SEND A NEW CODE"}
+                    </Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -236,18 +251,20 @@ const styles = StyleSheet.create({
   title: { fontSize: 32, fontWeight: '900', letterSpacing: -1 },
   subtitle: { fontSize: 15, textAlign: 'center', marginTop: 15, lineHeight: 22, fontWeight: '600', opacity: 0.7 },
   bold: { fontWeight: '900' },
-  inputContainer: { width: '100%', height: 100, marginVertical: 30, justifyContent: 'center', alignItems: 'center' },
+  
+  inputContainer: { width: '100%', height: 80, marginVertical: 30, justifyContent: 'center' },
   hiddenInput: { position: 'absolute', width: '100%', height: '100%', opacity: 0, zIndex: 10 },
-  boxesRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-between' },
+  boxesRow: { flexDirection: 'row', width: '100%', justifyContent: 'space-between', gap: 8 },
   digitBox: { 
-    width: (width - 100) / 6, 
-    height: 68, 
-    borderRadius: 18, 
-    borderWidth: 2, 
+    flex: 1,
+    height: 64, 
+    borderRadius: 16, 
+    borderWidth: 1.5, 
     justifyContent: 'center', 
     alignItems: 'center' 
   },
-  digitText: { fontSize: 28, fontWeight: '900' },
+  digitText: { fontSize: 26, fontWeight: '900' },
+  
   verifyBtn: { 
     width: '100%', 
     height: 75, 
@@ -260,11 +277,11 @@ const styles = StyleSheet.create({
   },
   btnDisabled: { opacity: 0.2 },
   btnLabel: { fontWeight: '900', fontSize: 14, letterSpacing: 1 },
-  helpBox: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 40, opacity: 0.6 },
-  helpText: { fontSize: 12, fontWeight: '700' },
+  
   resendBtn: { marginTop: 40, padding: 15 },
   resendRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   resendLabel: { fontSize: 11, fontWeight: '900', letterSpacing: 1 },
+  
   toast: { position: 'absolute', top: 60, left: 20, right: 20, backgroundColor: Colors.brand.emerald, height: 56, borderRadius: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, zIndex: 9999, elevation: 10 },
   toastText: { color: 'white', fontWeight: '900', fontSize: 11, letterSpacing: 1 }
 });

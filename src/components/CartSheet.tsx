@@ -2,7 +2,7 @@ import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { StyleSheet, Dimensions, TouchableOpacity, Alert, Platform } from 'react-native';
 import BottomSheet, { BottomSheetScrollView, BottomSheetBackdrop } from '@gorhom/bottom-sheet';
 import * as Haptics from 'expo-haptics';
-import { ShieldAlert, Sparkles, ShoppingBag, Zap, MessageSquare } from 'lucide-react-native';
+import { ShieldAlert, Sparkles, ShoppingBag } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 
@@ -25,10 +25,9 @@ import { OrderSuccessModal } from './OrderSuccessModal';
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 CART ORCHESTRATOR v77.0
- * Purpose: Manages the checkout process, group orders by store, and handles rewards.
- * Logic: All orders are routed through the secure in-app messenger.
- * Security: Prevents self-purchases and ensures delivery information is complete.
+ * 🏰 CART ORCHESTRATOR v100.0 (Sheet Version)
+ * Purpose: Manages the checkout process via a modern Bottom Sheet overlay.
+ * Logic: Groups items by store, handles self-purchase security, and executes Chat Escrow.
  */
 export const CartSheet = ({ sheetRef }: { sheetRef: any }) => {
   const theme = Colors[useColorScheme() ?? 'light'];
@@ -91,23 +90,32 @@ export const CartSheet = ({ sheetRef }: { sheetRef: any }) => {
         items,
         deliveryAddress,
         channel: 'CHAT' 
-      });
+      }) as any;
 
       queryClient.invalidateQueries({ queryKey: ['user-profile'] });
 
       if (res) {
-        // @ts-ignore
         setSuccessStore(res.storeName || seller.display_name);
         setShowSuccess(true);
-        if (Object.keys(cartByVendor).length <= 1) sheetRef.current?.close();
+        // Only close sheet if cart is now empty or this was the only order
+        if (Object.keys(cartByVendor).length <= 1) {
+            sheetRef.current?.close();
+        }
       }
     } catch (err: any) {
       console.error("Order processing failed:", err.message);
+      Alert.alert("Error", "We couldn't complete this order.");
     }
   };
 
   const renderBackdrop = useCallback((props: any) => (
-    <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.5} />
+    <BottomSheetBackdrop 
+        {...props} 
+        disappearsOnIndex={-1} 
+        appearsOnIndex={0} 
+        opacity={0.6} 
+        pressBehavior="close"
+    />
   ), []);
 
   return (
@@ -115,12 +123,13 @@ export const CartSheet = ({ sheetRef }: { sheetRef: any }) => {
       <BottomSheet 
         ref={sheetRef} 
         index={-1} 
-        snapPoints={['70%', '94%']} 
+        snapPoints={['75%', '92%']} 
         enablePanDownToClose 
         backdropComponent={renderBackdrop}
-        handleIndicatorStyle={{ backgroundColor: theme.border, width: 36 }}
-        backgroundStyle={{ borderRadius: 45, backgroundColor: theme.background }}
+        handleIndicatorStyle={{ backgroundColor: theme.subtext, width: 40, height: 4 }}
+        backgroundStyle={{ borderRadius: 36, backgroundColor: theme.background }}
         keyboardBehavior="interactive"
+        android_keyboardInputMode="adjustResize"
       >
         <BottomSheetScrollView 
             showsVerticalScrollIndicator={false}
@@ -128,7 +137,7 @@ export const CartSheet = ({ sheetRef }: { sheetRef: any }) => {
         >
           {/* 🏛️ HEADER */}
           <View style={styles.header}>
-             <ShoppingBag size={20} color={theme.text} strokeWidth={3} />
+             <ShoppingBag size={20} color={theme.text} strokeWidth={2.5} />
              <Text style={[styles.headerTitle, { color: theme.text }]}>YOUR SHOPPING BAG</Text>
           </View>
           
@@ -170,29 +179,36 @@ export const CartSheet = ({ sheetRef }: { sheetRef: any }) => {
           )}
 
           {/* 🛒 STORE GROUPS */}
-          {Object.values(cartByVendor).map(({ seller, items, isRestricted }: any) => (
-            <View key={seller.id} style={styles.vendorWrapper}>
-              {isRestricted && (
-                <BlurView intensity={20} style={styles.restrictionBanner}>
-                  <ShieldAlert size={14} color="#EF4444" strokeWidth={3} />
-                  <Text style={styles.restrictionText}>SYSTEM LOCK: SELF-PURCHASE RESTRICTED</Text>
-                </BlurView>
-              )}
-              
-              <VendorOrderBlock 
-                store={seller}
-                items={items}
-                useCoins={useCoins}
-                coinBalance={profile?.coin_balance || 0}
-                isLoading={isProcessing}
-                isDisabled={isRestricted}
-                onRemove={removeFromCart}
-                onCheckout={() => onHandleCheckout(seller, items)}
-              />
-            </View>
-          ))}
+          {Object.values(cartByVendor).length === 0 ? (
+             <View style={styles.emptyContainer}>
+                 <ShoppingBag size={48} color={theme.border} strokeWidth={1.5} />
+                 <Text style={[styles.emptyText, { color: theme.subtext }]}>Your bag is empty.</Text>
+             </View>
+          ) : (
+             Object.values(cartByVendor).map(({ seller, items, isRestricted }: any) => (
+                <View key={seller.id} style={styles.vendorWrapper}>
+                  {isRestricted && (
+                    <View style={[styles.restrictionBanner, { backgroundColor: '#FEF2F2', borderColor: '#FEE2E2' }]}>
+                      <ShieldAlert size={14} color="#EF4444" strokeWidth={2.5} />
+                      <Text style={styles.restrictionText}>SYSTEM LOCK: SELF-PURCHASE RESTRICTED</Text>
+                    </View>
+                  )}
+                  
+                  <VendorOrderBlock 
+                    store={seller}
+                    items={items}
+                    useCoins={useCoins}
+                    coinBalance={profile?.coin_balance || 0}
+                    isLoading={isProcessing && activeSellerId === seller.id}
+                    isDisabled={isRestricted}
+                    onRemove={removeFromCart}
+                    onCheckout={() => onHandleCheckout(seller, items)}
+                  />
+                </View>
+             ))
+          )}
 
-          <View style={{ height: 120 }} />
+          <View style={{ height: 100 }} />
         </BottomSheetScrollView>
       </BottomSheet>
 
@@ -209,33 +225,37 @@ export const CartSheet = ({ sheetRef }: { sheetRef: any }) => {
 const styles = StyleSheet.create({
   scrollContent: { padding: 25 },
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 25, justifyContent: 'center' },
-  headerTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  headerTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 2 },
+  
   vendorWrapper: { marginBottom: 25 },
+  
   walletAnchor: { marginBottom: 30 },
   coinBox: { 
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     alignItems: 'center', 
-    padding: 24, 
-    borderRadius: 30, 
+    padding: 20, 
+    borderRadius: 24, 
     borderWidth: 1.5,
   },
-  walletInfo: { gap: 4 },
+  walletInfo: { gap: 6 },
   walletLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  coinLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5 },
-  coinBalance: { fontSize: 26, fontWeight: '900', letterSpacing: -1 },
+  coinLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
+  coinBalance: { fontSize: 24, fontWeight: '900', letterSpacing: -1 },
   togglePill: { paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14 },
   toggleText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  
   restrictionBanner: { 
     flexDirection: 'row', 
     alignItems: 'center', 
     gap: 8, 
-    padding: 14, 
-    borderRadius: 20, 
-    marginBottom: 12,
-    borderWidth: 1.5,
-    borderColor: 'rgba(239, 68, 68, 0.1)',
-    backgroundColor: 'rgba(239, 68, 68, 0.05)'
+    padding: 12, 
+    borderRadius: 16, 
+    marginBottom: 12, 
+    borderWidth: 1, 
   },
   restrictionText: { fontSize: 9, fontWeight: '900', color: '#EF4444', letterSpacing: 0.5 },
+  
+  emptyContainer: { alignItems: 'center', paddingVertical: 50, gap: 15 },
+  emptyText: { fontSize: 14, fontWeight: '700' }
 });

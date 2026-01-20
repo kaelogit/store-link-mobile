@@ -32,7 +32,15 @@ interface VendorOrderBlockProps {
     loyalty_enabled?: boolean; 
     loyalty_percentage?: number 
   };
-  items: any[];
+  items: Array<{
+    qty: number;
+    product: {
+      id: string;
+      name: string;
+      price: number;
+      image_urls?: string[];
+    }
+  }>;
   useCoins: boolean;
   coinBalance: number;
   isLoading: boolean;
@@ -42,7 +50,7 @@ interface VendorOrderBlockProps {
 }
 
 /**
- * 🏰 VENDOR ORDER BLOCK v78.0
+ * 🏰 VENDOR ORDER BLOCK v79.0
  * Purpose: A dedicated container for items from a specific store within the cart.
  * Features: Automatic price calculation, premium store styling, and secure chat checkout.
  * Security: Prevents users from buying from their own store to ensure marketplace integrity.
@@ -94,6 +102,7 @@ export const VendorOrderBlock = ({
                 style={styles.storeLogo} 
                 contentFit="cover" 
                 transition={200}
+                cachePolicy="memory-disk"
               />
             </View>
             <View style={styles.identityText}>
@@ -132,6 +141,7 @@ export const VendorOrderBlock = ({
                 onRemove(item.product.id);
               }} 
               style={styles.removeBtn}
+              hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
             >
               <Trash2 color={theme.subtext} size={18} />
             </TouchableOpacity>
@@ -141,7 +151,7 @@ export const VendorOrderBlock = ({
 
       {/* 💰 DISCOUNT SUMMARY */}
       {appliedDiscount > 0 && (
-        <View style={[styles.savingsPill, { backgroundColor: Colors.brand.emerald + '10' }]}>
+        <View style={[styles.savingsPill, { backgroundColor: `${Colors.brand.emerald}10` }]}>
             <Sparkles size={12} color={Colors.brand.emerald} fill={Colors.brand.emerald} />
             <Text style={[styles.savingsText, { color: Colors.brand.emerald }]}>
               5% COIN DISCOUNT: <Text style={{fontWeight: '900'}}>-₦{appliedDiscount.toLocaleString()}</Text>

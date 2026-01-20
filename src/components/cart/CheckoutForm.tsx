@@ -15,7 +15,7 @@ interface CheckoutFormProps {
 }
 
 /**
- * 🏰 CHECKOUT FORM v78.0
+ * 🏰 CHECKOUT FORM v79.0
  * Purpose: A secure input module for capturing delivery and contact details.
  * Logic: Displays verified account details alongside a dedicated address input.
  * Visual: High-fidelity layout with premium border synchronization for Diamond users.
@@ -37,7 +37,7 @@ export const CheckoutForm = ({ address, setAddress }: CheckoutFormProps) => {
       <View style={styles.header}>
         <View style={styles.titleGroup}>
           <Text style={[styles.title, { color: theme.text }]}>DELIVERY INFORMATION</Text>
-          <View style={[styles.secureBadge, { backgroundColor: Colors.brand.emerald + '15' }]}>
+          <View style={[styles.secureBadge, { backgroundColor: `${Colors.brand.emerald}15` }]}>
             <ShieldCheck size={10} color={Colors.brand.emerald} strokeWidth={3} />
             <Text style={[styles.secureText, { color: Colors.brand.emerald }]}>SECURE</Text>
           </View>
@@ -70,7 +70,7 @@ export const CheckoutForm = ({ address, setAddress }: CheckoutFormProps) => {
         <MapPin size={20} color={theme.text} strokeWidth={2.5} style={styles.inputIcon} />
         <TextInput
           placeholder="Building No, Street Name, City, State..."
-          placeholderTextColor={`${theme.subtext}80`}
+          placeholderTextColor={theme.subtext}
           style={[styles.input, { color: theme.text }]}
           value={address}
           onChangeText={setAddress}
@@ -78,6 +78,7 @@ export const CheckoutForm = ({ address, setAddress }: CheckoutFormProps) => {
           numberOfLines={3}
           selectionColor={Colors.brand.emerald}
           autoCapitalize="words"
+          textAlignVertical="top" // Android Fix
           onFocus={() => Haptics.selectionAsync()}
         />
       </View>
@@ -180,7 +181,6 @@ const styles = StyleSheet.create({
     flex: 1, 
     fontSize: 15, 
     fontWeight: '600', 
-    textAlignVertical: 'top',
     paddingTop: 0,
     lineHeight: 22,
   },
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   helperText: { 
     fontSize: 10, 
     fontWeight: '700', 
-    lineHeight: 16,
+    lineHeight: 16, 
     opacity: 0.6
   }
 });

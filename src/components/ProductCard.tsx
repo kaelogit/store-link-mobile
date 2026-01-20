@@ -1,8 +1,8 @@
 import React, { useState, useRef, memo, useCallback } from 'react';
 import { 
   StyleSheet, TouchableOpacity, 
-  ScrollView, Animated, Platform, Pressable,
-  useWindowDimensions 
+  ScrollView, Animated, Pressable,
+  useWindowDimensions, ViewStyle
 } from 'react-native';
 import { 
   Heart, MessageCircle, Share2, 
@@ -17,8 +17,11 @@ import { Image } from 'expo-image'; // 🛡️ High-Speed Image Caching
 import { View, Text } from './Themed';
 import Colors from '../constants/Colors';
 import { useColorScheme } from './useColorScheme';
+import { Product, Profile } from '../types'; // Ensure you have these types or keep inline
 
-const SIDEBAR_WIDTH = 60;
+const SIDEBAR_WIDTH = 50;
+const CONTAINER_PADDING = 15;
+const GAP = 12;
 
 interface ProductCardProps {
   item: {
@@ -26,19 +29,18 @@ interface ProductCardProps {
     seller_id: string;
     name: string;
     price: number;
-    description: string;
+    description: string | null;
     stock_quantity: number;
     image_urls: string[];
     likes_count?: number;
     comments_count?: number;
     is_liked?: boolean; 
     seller?: {
-      display_name: string;
-      slug: string;
-      location?: string;
-      location_city?: string;
-      location_state?: string;
-      logo_url?: string;
+      display_name: string | null;
+      slug: string | null;
+      location_city?: string | null;
+      location_state?: string | null;
+      logo_url?: string | null;
       subscription_plan?: string;
     };
   };
@@ -51,9 +53,10 @@ interface ProductCardProps {
 }
 
 /**
- * 🏰 PRODUCT CARD v102.0
+ * 🏰 PRODUCT CARD v103.0
  * Visual: Premium layout with interactive social actions.
  * Features: Double-tap to like, image carousel, and real-time stock alerts.
+ * Fix: Responsive Aspect Ratio for Foldables/Tablets.
  */
 export const ProductCard = memo<ProductCardProps>(({ 
   item, isSaved, onOpenComments, onToggleWishlist, onToggleLike, onAddToCart 
@@ -65,8 +68,13 @@ export const ProductCard = memo<ProductCardProps>(({
   const [activeImageIndex, setActiveImageIndex] = useState(0);
   const likeScale = useRef(new Animated.Value(0)).current;
 
-  const contentWidth = screenWidth - SIDEBAR_WIDTH - 30;
-  const imageHeight = screenWidth > 600 ? 580 : 440; 
+  // 📐 RESPONSIVE MATH
+  // We calculate the exact width available for the image column
+  const contentWidth = screenWidth - SIDEBAR_WIDTH - (CONTAINER_PADDING * 2) - GAP;
+  
+  // Standard Fashion E-commerce Ratio (4:5)
+  // This ensures images look consistent on iPhone Mini vs Galaxy Fold
+  const imageHeight = contentWidth * 1.25; 
 
   const isDiamond = item.seller?.subscription_plan === 'diamond';
 
@@ -94,7 +102,7 @@ export const ProductCard = memo<ProductCardProps>(({
             style={[styles.logoBox, { borderColor: theme.border }, isDiamond && styles.diamondHalo]}
           >
             <Image 
-              source={item.seller?.logo_url} 
+              source={item.seller?.logo_url || 'https://via.placeholder.com/50'} 
               style={styles.logoImg} 
               contentFit="cover"
               transition={200}
@@ -132,13 +140,13 @@ export const ProductCard = memo<ProductCardProps>(({
             <View style={styles.metaItem}>
               <MapPin size={10} color={theme.subtext} strokeWidth={3} />
               <Text style={[styles.metaText, { color: theme.subtext }]}>
-                {item.seller?.location_city ? `${item.seller.location_city}, ${item.seller.location_state}`.toUpperCase() : "LAGOS"}
+                {item.seller?.location_city ? `${item.seller.location_city}`.toUpperCase() : "LAGOS"}
               </Text>
             </View>
             <View style={styles.metaItem}>
               <Package size={10} color={theme.subtext} strokeWidth={3} />
               <Text style={[styles.metaText, { color: theme.subtext }]}>
-                {item.stock_quantity > 0 ? `${item.stock_quantity} AVAILABLE` : "OUT OF STOCK"}
+                {item.stock_quantity > 0 ? `${item.stock_quantity} LEFT` : "SOLD OUT"}
               </Text>
             </View>
           </View>
@@ -148,9 +156,10 @@ export const ProductCard = memo<ProductCardProps>(({
       {/* 🏛️ SOCIAL ACTIONS & IMAGE */}
       <View style={styles.visualActionRow}>
         <View style={styles.sidebarColumn}>
+          {/* Aligned to the center of the image height */}
           <View style={[styles.centeredActionStack, { height: imageHeight }]}>
             
-            <TouchableOpacity style={styles.sideAction} onPress={handleLike}>
+            <TouchableOpacity style={styles.sideAction} onPress={handleLike} hitSlop={10}>
               <Heart 
                 size={24} 
                 color={item.is_liked ? "#EF4444" : theme.text} 
@@ -160,7 +169,7 @@ export const ProductCard = memo<ProductCardProps>(({
               <Text style={[styles.metricCount, { color: theme.text }]}>{item.likes_count || 0}</Text>
             </TouchableOpacity>
             
-            <TouchableOpacity style={styles.sideAction} onPress={onOpenComments}>
+            <TouchableOpacity style={styles.sideAction} onPress={onOpenComments} hitSlop={10}>
               <MessageCircle size={24} color={theme.text} strokeWidth={2.5} />
               <Text style={[styles.metricCount, { color: theme.text }]}>{item.comments_count || 0}</Text>
             </TouchableOpacity>
@@ -172,12 +181,12 @@ export const ProductCard = memo<ProductCardProps>(({
               <Text style={[styles.metricCount, { color: theme.text }]}>BUY</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sideAction} onPress={() => {/* Share logic */}}>
+            <TouchableOpacity style={styles.sideAction} onPress={() => {/* Share logic */}} hitSlop={10}>
               <Share2 size={24} color={theme.text} strokeWidth={2.5} />
               <Text style={[styles.metricCount, { color: theme.text }]}>SHARE</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.sideAction} onPress={() => onToggleWishlist(item.id)}>
+            <TouchableOpacity style={styles.sideAction} onPress={() => onToggleWishlist(item.id)} hitSlop={10}>
               <Bookmark 
                 size={24} 
                 color={isSaved ? Colors.brand.emerald : theme.text} 
@@ -190,13 +199,20 @@ export const ProductCard = memo<ProductCardProps>(({
         </View>
 
         <View style={styles.contentColumn}>
-          <Pressable onLongPress={handleLike} style={[styles.visualHub, { height: imageHeight }, isDiamond && styles.diamondBorder]}>
+          <Pressable 
+            onLongPress={handleLike} 
+            style={[
+              styles.visualHub, 
+              { height: imageHeight, width: contentWidth }, 
+              isDiamond && styles.diamondBorder
+            ]}
+          >
             <ScrollView 
               horizontal pagingEnabled 
               showsHorizontalScrollIndicator={false}
               onScroll={(e) => setActiveImageIndex(Math.round(e.nativeEvent.contentOffset.x / contentWidth))}
               scrollEventThrottle={16}
-              snapToInterval={contentWidth}
+              snapToInterval={contentWidth} // 🛡️ EXACT SNAP
               decelerationRate="fast"
             >
               {item.image_urls.map((url, i) => (
@@ -234,11 +250,12 @@ export const ProductCard = memo<ProductCardProps>(({
 });
 
 const styles = StyleSheet.create({
-  container: { paddingVertical: 20, paddingHorizontal: 15 },
+  container: { paddingVertical: 20, paddingHorizontal: CONTAINER_PADDING },
   topSection: { flexDirection: 'row', marginBottom: 15 },
   sidebarColumn: { width: SIDEBAR_WIDTH, alignItems: 'center' },
-  contentColumn: { flex: 1, marginLeft: 8 },
-  logoBox: { width: 48, height: 48, borderRadius: 18, borderWidth: 1.5, overflow: 'hidden' },
+  contentColumn: { flex: 1, marginLeft: GAP },
+  
+  logoBox: { width: 44, height: 44, borderRadius: 16, borderWidth: 1.5, overflow: 'hidden' },
   diamondHalo: { borderColor: '#8B5CF6' },
   logoImg: { width: '100%', height: '100%' },
   

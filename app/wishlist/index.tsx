@@ -1,9 +1,9 @@
 import React, { useCallback, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, FlatList, 
-  TouchableOpacity, ActivityIndicator, Dimensions, Alert, RefreshControl, Platform 
+  TouchableOpacity, ActivityIndicator, Dimensions, Alert, RefreshControl, Platform, StatusBar 
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { 
   Trash2, ArrowLeft, BookmarkX, 
@@ -24,17 +24,18 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 const { width } = Dimensions.get('window');
-const COLUMN_WIDTH = (width - 55) / 2;
+const COLUMN_WIDTH = (width - 60) / 2; // Adjusted spacing
 const IMAGE_HEIGHT = COLUMN_WIDTH * 1.25; // 🏛️ 4:5 Aspect Ratio
 
 /**
- * 🏰 WISHLIST v80.0
+ * 🏰 WISHLIST v81.0
  * Purpose: A dedicated space for users to track items they want to buy.
  * Logic: Fast loading with real-time stock updates.
  * Features: One-tap "Add to Bag" and stock alerts for low inventory.
  */
 export default function WishlistScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const theme = Colors[useColorScheme() ?? 'light'];
   
@@ -91,9 +92,11 @@ export default function WishlistScreen() {
     onMutate: async (productId) => {
       await queryClient.cancelQueries({ queryKey: ['wishlist-list', profile?.id] });
       const previous = queryClient.getQueryData(['wishlist-list', profile?.id]);
+      
       queryClient.setQueryData(['wishlist-list', profile?.id], (old: any) => 
         old?.filter((item: any) => item.id !== productId)
       );
+      
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
       return { previous };
     },
@@ -122,10 +125,16 @@ export default function WishlistScreen() {
   );
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+    <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.text === '#000' ? "dark-content" : "light-content"} />
+      
       {/* HEADER */}
-      <View style={[styles.header, { borderBottomColor: theme.surface }]}>
-        <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: theme.surface }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20), borderBottomColor: theme.surface }]}>
+        <TouchableOpacity 
+            onPress={() => router.back()} 
+            style={[styles.backBtn, { backgroundColor: theme.surface }]}
+            hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
+        >
           <ArrowLeft size={24} color={theme.text} strokeWidth={2.5} />
         </TouchableOpacity>
         <View style={styles.headerInfo}>
@@ -139,9 +148,10 @@ export default function WishlistScreen() {
         numColumns={2}
         keyExtractor={(item) => `wish-${item.id}`}
         refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={Colors.brand.emerald} />}
-        contentContainerStyle={[styles.gridContent, { paddingBottom: 120 }]}
+        contentContainerStyle={[styles.gridContent, { paddingBottom: insets.bottom + 100 }]}
         columnWrapperStyle={styles.gridRow}
         showsVerticalScrollIndicator={false}
+        
         ListEmptyComponent={
           <View style={styles.emptyState}>
             <View style={[styles.emptyCircle, { backgroundColor: theme.surface }]}>
@@ -156,6 +166,7 @@ export default function WishlistScreen() {
             </TouchableOpacity>
           </View>
         }
+        
         renderItem={({ item }) => {
           const isDiamond = item.seller?.subscription_plan === 'diamond';
           const isLowStock = item.stock_quantity > 0 && item.stock_quantity < 5;
@@ -172,11 +183,13 @@ export default function WishlistScreen() {
                   style={styles.itemImage} 
                   contentFit="cover"
                   transition={200}
+                  cachePolicy="memory-disk"
                 />
                 
                 <TouchableOpacity 
-                  style={[styles.removeBtn, { backgroundColor: theme.background + 'CC' }]} 
+                  style={[styles.removeBtn, { backgroundColor: `${theme.background}CC` }]} 
                   onPress={() => removeMutation.mutate(item.id)}
+                  hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}
                 >
                   <Trash2 size={16} color="#EF4444" strokeWidth={2.5} />
                 </TouchableOpacity>
@@ -212,7 +225,7 @@ export default function WishlistScreen() {
           );
         }}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
@@ -220,30 +233,39 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loaderText: { marginTop: 15, fontSize: 8, fontWeight: '900', letterSpacing: 2, opacity: 0.4 },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 18, gap: 15, borderBottomWidth: 1.5 },
+  
+  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, gap: 15, borderBottomWidth: 1.5 },
   headerInfo: { flex: 1 },
   backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center', borderRadius: 14 },
   title: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
   subtitle: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5, marginTop: 2 },
+  
   gridContent: { padding: 20 },
   gridRow: { justifyContent: 'space-between' },
+  
   wishItem: { width: COLUMN_WIDTH, marginBottom: 35 },
   imageBox: { width: COLUMN_WIDTH, height: IMAGE_HEIGHT, borderRadius: 24, overflow: 'hidden', borderWidth: 1.5, position: 'relative' },
   itemImage: { width: '100%', height: '100%' },
+  
   removeBtn: { position: 'absolute', top: 10, right: 10, width: 34, height: 34, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  
   lowStockBadge: { position: 'absolute', bottom: 10, left: 10, backgroundColor: '#EF4444', paddingHorizontal: 8, paddingVertical: 5, borderRadius: 8, flexDirection: 'row', alignItems: 'center', gap: 4, elevation: 4 },
   lowStockText: { color: 'white', fontSize: 8, fontWeight: '900' },
+  
   details: { marginTop: 12, gap: 3 },
   vendorRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   vendorName: { fontSize: 8, fontWeight: '900', letterSpacing: 1, flex: 1 },
   itemName: { fontSize: 14, fontWeight: '800' },
   itemPrice: { fontSize: 13, fontWeight: '900', marginBottom: 6 },
+  
   addBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingVertical: 14, borderRadius: 16, elevation: 4 },
   addBtnText: { fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  
   emptyState: { flex: 1, alignItems: 'center', marginTop: 100, paddingHorizontal: 30 },
   emptyCircle: { width: 110, height: 110, borderRadius: 45, justifyContent: 'center', alignItems: 'center', marginBottom: 25 },
   emptyTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   emptySub: { textAlign: 'center', marginTop: 12, lineHeight: 22, fontSize: 14, fontWeight: '600', opacity: 0.6 },
+  
   shopBtn: { paddingHorizontal: 35, paddingVertical: 20, borderRadius: 24, marginTop: 40, elevation: 6 },
   shopBtnText: { fontWeight: '900', fontSize: 11, letterSpacing: 1.5 }
 });

@@ -2,9 +2,9 @@ import React, { useState } from 'react';
 import { 
   StyleSheet, TextInput, TouchableOpacity, 
   ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, 
-  Platform, Dimensions 
+  Platform, Dimensions, Keyboard 
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router'; 
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   ArrowLeft, ShieldCheck, Info, 
@@ -26,25 +26,27 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 HELP CENTER v96.0
- * Purpose: A secure way for users to contact support for help with payments, identity, or app issues.
- * Features: High-fidelity category picking and instant submission feedback.
+ * 🏰 HELP CENTER v98.0
+ * Purpose: Secure communication for account and payment help.
+ * Logic: Pre-fills info if coming from a failed payout or order.
  */
 export default function CreateSupportTicketScreen() {
   const router = useRouter();
+  const params = useLocalSearchParams(); 
   const insets = useSafeAreaInsets();
   const theme = Colors[useColorScheme() ?? 'light'];
   const { profile } = useUserStore();
   const queryClient = useQueryClient();
 
-  const [category, setCategory] = useState<string | null>(null);
-  const [subject, setSubject] = useState("");
+  // 🛡️ AUTO-WIRING: Pre-fill category and subject if redirected
+  const [category, setCategory] = useState<string | null>(params.category as string || null);
+  const [subject, setSubject] = useState(params.subject as string || "");
   const [message, setMessage] = useState("");
 
   const categories = [
     { id: 'PAYMENT', label: 'PAYMENT', icon: CreditCard, color: Colors.brand.emerald },
     { id: 'IDENTITY', label: 'IDENTITY', icon: UserCheck, color: '#3B82F6' },
-    { id: 'TECHNICAL', label: 'APP ISSUE', icon: Zap, color: Colors.brand.violet },
+    { id: 'TECHNICAL', label: 'APP ISSUE', icon: Zap, color: '#8B5CF6' },
     { id: 'GENERAL', label: 'OTHER', icon: Info, color: '#6B7280' },
   ];
 
@@ -52,7 +54,7 @@ export default function CreateSupportTicketScreen() {
   const ticketMutation = useMutation({
     mutationFn: async () => {
       if (!category || !subject.trim() || !message.trim()) {
-        throw new Error("REQUIRED INFO: PLEASE FILL IN ALL FIELDS.");
+        throw new Error("Please fill in all fields before sending.");
       }
 
       const { error } = await supabase
@@ -64,27 +66,29 @@ export default function CreateSupportTicketScreen() {
           message: message.trim(),
           status: 'OPEN',
           priority: category === 'PAYMENT' || category === 'IDENTITY' ? 'HIGH' : 'NORMAL',
-          updated_at: new Date().toISOString()
+          // 🆕 Reference the specific transaction if applicable
+          reference_id: params.refId || null 
         });
 
       if (error) throw error;
       return true;
     },
     onMutate: () => {
+      Keyboard.dismiss();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     },
     onSuccess: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ['support-history'] }); 
       Alert.alert(
-        "REQUEST SENT", 
-        "Your message has been received. Our safety team will respond within 4 hours.",
+        "MESSAGE SENT", 
+        "Our safety team has received your request. Expect a reply within 4 hours.",
         [{ text: "OK", onPress: () => router.back() }]
       );
     },
     onError: (e: any) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("SUBMISSION ERROR", e.message.toUpperCase());
+      Alert.alert("SENDING FAILED", e.message.toUpperCase());
     }
   });
 
@@ -94,23 +98,26 @@ export default function CreateSupportTicketScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
         style={{ flex: 1 }}
       >
-        {/* 📱 HEADER */}
-        <View style={[styles.header, { borderBottomColor: theme.surface, paddingTop: insets.top + 10 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <View style={[styles.header, { paddingTop: Math.max(insets.top, 20) }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             <ArrowLeft color={theme.text} size={28} strokeWidth={2.5} />
           </TouchableOpacity>
-          <Text style={[styles.headerTitle, { color: theme.text }]}>CONTACT SUPPORT</Text>
+          <Text style={[styles.headerTitle, { color: theme.text }]}>HELP CENTER</Text>
           <View style={{ width: 44 }} />
         </View>
 
-        <ScrollView contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]} showsVerticalScrollIndicator={false}>
+        <ScrollView 
+            contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+        >
           <View style={styles.introBox}>
-            <View style={[styles.introIconHalo, { backgroundColor: Colors.brand.emerald + '15' }]}>
+            <View style={[styles.introIconHalo, { backgroundColor: `${Colors.brand.emerald}15` }]}>
                <Headphones size={42} color={Colors.brand.emerald} strokeWidth={2.5} />
             </View>
-            <Text style={[styles.introTitle, { color: theme.text }]}>How can we help?</Text>
+            <Text style={[styles.introTitle, { color: theme.text }]}>Support Team</Text>
             <Text style={[styles.introSub, { color: theme.subtext }]}>
-              Send a message to our support team for help with your account or orders.
+              Fast help for your payments, account safety, or technical issues.
             </Text>
           </View>
 
@@ -122,23 +129,20 @@ export default function CreateSupportTicketScreen() {
               return (
                 <TouchableOpacity 
                   key={cat.id} 
-                  activeOpacity={0.8}
                   style={[
                     styles.catCard, 
-                    { borderColor: theme.border, backgroundColor: theme.surface },
-                    isSelected && { borderColor: theme.text, borderWidth: 2 }
+                    { backgroundColor: theme.surface, borderColor: isSelected ? theme.text : theme.border }
                   ]}
                   onPress={() => {
                     setCategory(cat.id);
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                   }}
+                  activeOpacity={0.7}
                 >
                   <View style={[styles.iconCircle, { backgroundColor: isSelected ? theme.text : theme.background }]}>
-                    <Icon size={20} color={isSelected ? theme.background : cat.color} strokeWidth={2.5} />
+                    <Icon size={20} color={isSelected ? theme.background : cat.color} />
                   </View>
-                  <Text style={[styles.catText, { color: isSelected ? theme.text : theme.subtext }]}>
-                    {cat.label}
-                  </Text>
+                  <Text style={[styles.catText, { color: isSelected ? theme.text : theme.subtext }]}>{cat.label}</Text>
                 </TouchableOpacity>
               );
             })}
@@ -146,31 +150,29 @@ export default function CreateSupportTicketScreen() {
 
           <Text style={styles.sectionLabel}>SUBJECT</Text>
           <TextInput 
-            style={[styles.subjectInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
-            placeholder="Brief summary of the issue"
-            placeholderTextColor={`${theme.subtext}80`}
+            style={[styles.subjectInput, { backgroundColor: theme.surface, color: theme.text }]}
+            placeholder="What is this about?"
+            placeholderTextColor={theme.subtext}
             value={subject}
             onChangeText={setSubject}
-            selectionColor={Colors.brand.emerald}
           />
 
           <Text style={styles.sectionLabel}>MESSAGE</Text>
           <TextInput 
-            style={[styles.messageInput, { backgroundColor: theme.surface, borderColor: theme.border, color: theme.text }]}
-            placeholder="Tell us more about your request..."
-            placeholderTextColor={`${theme.subtext}80`}
+            style={[styles.messageInput, { backgroundColor: theme.surface, color: theme.text }]}
+            placeholder="Describe your issue in detail..."
+            placeholderTextColor={theme.subtext}
             value={message}
             onChangeText={setMessage}
             multiline
-            textAlignVertical="top"
-            selectionColor={Colors.brand.emerald}
+            textAlignVertical="top" // Android fix
           />
 
           <TouchableOpacity 
             style={[
-              styles.submitBtn, 
-              { backgroundColor: theme.text }, 
-              (ticketMutation.isPending || !category) && styles.submitDisabled
+                styles.submitBtn, 
+                { backgroundColor: theme.text }, 
+                (!category || ticketMutation.isPending) && { opacity: 0.5 }
             ]} 
             onPress={() => ticketMutation.mutate()}
             disabled={ticketMutation.isPending || !category}
@@ -178,19 +180,9 @@ export default function CreateSupportTicketScreen() {
             {ticketMutation.isPending ? (
               <ActivityIndicator color={theme.background} />
             ) : (
-              <>
-                <MessageSquare size={20} color={theme.background} strokeWidth={2.5} />
-                <Text style={[styles.submitBtnText, { color: theme.background }]}>SEND MESSAGE</Text>
-              </>
+              <Text style={[styles.submitBtnText, { color: theme.background }]}>SEND REQUEST</Text>
             )}
           </TouchableOpacity>
-
-          <View style={styles.securityFooter}>
-             <ShieldCheck size={14} color={theme.subtext} />
-             <Text style={[styles.securityNote, { color: theme.subtext }]}>
-               SECURE ENCRYPTED MESSAGING
-             </Text>
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </View>
@@ -199,24 +191,27 @@ export default function CreateSupportTicketScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, borderBottomWidth: 1.5 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20 },
   backBtn: { width: 44, height: 44, justifyContent: 'center' },
-  headerTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  headerTitle: { fontSize: 12, fontWeight: '900', letterSpacing: 2 },
+  
   scrollContent: { padding: 25 },
-  introBox: { alignItems: 'center', marginBottom: 45 },
-  introIconHalo: { width: 100, height: 100, borderRadius: 35, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  introTitle: { fontSize: 32, fontWeight: '900', letterSpacing: -1.5 },
-  introSub: { fontSize: 15, textAlign: 'center', marginTop: 12, lineHeight: 24, fontWeight: '600', opacity: 0.7 },
-  sectionLabel: { fontSize: 9, fontWeight: '900', color: '#9CA3AF', letterSpacing: 1.5, marginBottom: 15, marginLeft: 5 },
-  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginBottom: 40 },
-  catCard: { width: (width - 62) / 2, padding: 20, borderRadius: 28, borderWidth: 1.5, alignItems: 'center', flexDirection: 'row', gap: 12 },
-  iconCircle: { width: 42, height: 42, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
-  catText: { fontSize: 12, fontWeight: '900', letterSpacing: 0.5 },
-  subjectInput: { borderRadius: 24, padding: 20, fontSize: 16, fontWeight: '700', borderWidth: 1.5, marginBottom: 30, height: 72 },
-  messageInput: { borderRadius: 32, padding: 25, fontSize: 16, fontWeight: '600', borderWidth: 1.5, height: 200, marginBottom: 40 },
-  submitBtn: { height: 75, borderRadius: 28, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, elevation: 8, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 15 },
-  submitDisabled: { opacity: 0.2 },
+  
+  introBox: { alignItems: 'center', marginBottom: 40 },
+  introIconHalo: { width: 90, height: 90, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 15 },
+  introTitle: { fontSize: 32, fontWeight: '900', letterSpacing: -1 },
+  introSub: { fontSize: 14, textAlign: 'center', marginTop: 10, lineHeight: 22, fontWeight: '600', opacity: 0.6, paddingHorizontal: 20 },
+  
+  sectionLabel: { fontSize: 10, fontWeight: '900', color: '#9CA3AF', letterSpacing: 1.5, marginBottom: 15, marginLeft: 4 },
+  
+  categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 35 },
+  catCard: { width: (width - 60) / 2, padding: 15, borderRadius: 24, borderWidth: 1.5, alignItems: 'center', flexDirection: 'row', gap: 10 },
+  iconCircle: { width: 40, height: 40, borderRadius: 12, justifyContent: 'center', alignItems: 'center' },
+  catText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.5 },
+  
+  subjectInput: { borderRadius: 20, padding: 18, fontSize: 15, fontWeight: '600', marginBottom: 25 },
+  messageInput: { borderRadius: 24, padding: 20, fontSize: 15, fontWeight: '500', height: 160, marginBottom: 35 },
+  
+  submitBtn: { height: 70, borderRadius: 24, justifyContent: 'center', alignItems: 'center', elevation: 4 },
   submitBtnText: { fontWeight: '900', fontSize: 13, letterSpacing: 1.5 },
-  securityFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 45, opacity: 0.5 },
-  securityNote: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5 }
 });

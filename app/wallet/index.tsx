@@ -1,4 +1,4 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, 
   ActivityIndicator, RefreshControl, Dimensions 
@@ -8,13 +8,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   ArrowLeft, Gem, TrendingUp, 
   TrendingDown, History, ShieldCheck,
-  Zap, Receipt
+  Zap, Receipt, Wallet as WalletIcon, ArrowUpRight
 } from 'lucide-react-native';
-import * as Haptics from 'expo-haptics';
+import * as Haptics from 'expo-haptics'; // 🛠️ FIXED IMPORT
 import { LinearGradient } from 'expo-linear-gradient';
 
 // 💎 SPEED ENGINE
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 
 // App Connection
 import { supabase } from '../../src/lib/supabase';
@@ -25,30 +25,40 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 
 const { width } = Dimensions.get('window');
 
+// 🛠️ ADDED MISSING COMPONENT
+const EmptyHistory = ({ theme }: { theme: any }) => (
+  <View style={styles.emptyContainer}>
+    <History size={48} color={theme.border} />
+    <Text style={[styles.emptyText, { color: theme.subtext }]}>NO TRANSACTIONS YET</Text>
+  </View>
+);
+
 /**
- * 🏰 WALLET SCREEN v79.0
- * Purpose: Secure and clear tracking of coins and transactions.
- * Visual: High-fidelity transaction list with clear money flow indicators.
+ * 🏰 UNIFIED WALLET v85.0
+ * Purpose: Secure tracking of both Cash (Escrow/Refunds) and Store Coins.
  */
 export default function WalletScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = Colors[useColorScheme() ?? 'light'];
   const { profile, refreshUserData } = useUserStore();
-  const queryClient = useQueryClient();
+  
+  // Toggle between viewing 'CASH' and 'COINS'
+  const [activeType, setActiveType] = useState<'CASH' | 'COINS'>('CASH');
 
-  /** 📡 TRANSACTION SYNC */
+  /** 📡 TRANSACTION SYNC: Fetches both Cash and Coin movements */
   const { 
     data: transactions = [], 
     isLoading, 
     isRefetching, 
     refetch 
   } = useQuery({
-    queryKey: ['wallet-transactions', profile?.id],
+    queryKey: ['wallet-history', profile?.id, activeType],
     queryFn: async () => {
       if (!profile?.id) return [];
+      const table = activeType === 'COINS' ? 'coin_transactions' : 'cash_transactions';
       const { data, error } = await supabase
-        .from('coin_transactions')
+        .from(table)
         .select('*')
         .eq('user_id', profile.id)
         .order('created_at', { ascending: false });
@@ -65,56 +75,15 @@ export default function WalletScreen() {
     refetch();
   }, [refetch, refreshUserData]);
 
-  const renderTransaction = ({ item }: { item: any }) => {
-    const isEarn = item.type === 'EARN' || item.type === 'REFUND';
-    
-    return (
-      <View style={[styles.transactionRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-        <View style={[styles.iconBox, { backgroundColor: isEarn ? '#ECFDF5' : '#FEF2F2' }]}>
-          {isEarn ? (
-            <TrendingUp size={18} color="#10B981" strokeWidth={3} />
-          ) : (
-            <TrendingDown size={18} color="#EF4444" strokeWidth={3} />
-          )}
-        </View>
-        
-        <View style={styles.txInfo}>
-          <Text style={[styles.txType, { color: theme.text }]}>
-            {item.type.replace('_', ' ').toUpperCase()}
-          </Text>
-          <Text style={[styles.txHash, { color: theme.subtext }]}>
-            TRANSACTION ID: {item.id.slice(0, 8).toUpperCase()}
-          </Text>
-        </View>
-
-        <View style={styles.txAmount}>
-          <Text style={[styles.amountText, { color: isEarn ? '#10B981' : theme.text }]}>
-            {isEarn ? '+' : '-'} ₦{item.amount.toLocaleString()}
-          </Text>
-          <Text style={[styles.txDate, { color: theme.subtext }]}>
-            {new Date(item.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
-          </Text>
-        </View>
-      </View>
-    );
-  };
-
-  if (isLoading && transactions.length === 0) return (
-    <View style={styles.centered}>
-      <ActivityIndicator color={Colors.brand.emerald} size="large" />
-      <Text style={styles.loaderText}>UPDATING BALANCE...</Text>
-    </View>
-  );
-
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       {/* HEADER */}
-      <View style={[styles.header, { borderBottomColor: theme.surface, paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ArrowLeft size={28} color={theme.text} strokeWidth={2.5} />
+          <ArrowLeft size={24} color={theme.text} strokeWidth={2.5} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>MY WALLET</Text>
-        <View style={{ width: 44 }} />
+        <View style={{ width: 34 }} />
       </View>
 
       <FlatList
@@ -126,21 +95,31 @@ export default function WalletScreen() {
         }
         ListHeaderComponent={() => (
           <View style={styles.topSection}>
+            {/* 💳 DUAL BALANCE CARD */}
             <LinearGradient
-              colors={['#111827', '#1F2937']}
+              colors={activeType === 'CASH' ? ['#065F46', '#064E3B'] : ['#111827', '#1F2937']}
               start={{ x: 0, y: 0 }}
               end={{ x: 1, y: 1 }}
               style={styles.balanceCard}
             >
               <View style={styles.balanceHeader}>
-                <View style={styles.gemHalo}>
-                   <Gem size={18} color="#8B5CF6" fill="#8B5CF6" />
+                <View style={[styles.halo, { backgroundColor: 'rgba(255,255,255,0.1)' }]}>
+                  {activeType === 'CASH' ? (
+                    <WalletIcon size={18} color="white" />
+                  ) : (
+                    <Gem size={18} color="#8B5CF6" fill="#8B5CF6" />
+                  )}
                 </View>
-                <Text style={styles.balanceLabel}>STORE COINS</Text>
+                <Text style={styles.balanceLabel}>
+                  {activeType === 'CASH' ? 'AVAILABLE CASH' : 'STORE COINS'}
+                </Text>
               </View>
               
               <Text style={styles.balanceValue}>
-                ₦{profile?.coin_balance?.toLocaleString() || 0}
+                {activeType === 'CASH' ? '₦' : ''}
+                {activeType === 'CASH' 
+                  ? (profile?.escrow_balance || 0).toLocaleString() 
+                  : (profile?.coin_balance || 0).toLocaleString()}
               </Text>
               
               <View style={styles.cardFooter}>
@@ -148,58 +127,105 @@ export default function WalletScreen() {
                   <ShieldCheck size={14} color="#10B981" strokeWidth={3} />
                   <Text style={styles.integrityText}>SECURE BALANCE</Text>
                 </View>
-                <Zap size={16} color="rgba(255,255,255,0.2)" />
+                {activeType === 'CASH' && (
+                  <TouchableOpacity 
+                    style={styles.withdrawBtn}
+                    onPress={() => router.push('/wallet/withdraw')}
+                  >
+                    <Text style={styles.withdrawText}>WITHDRAW</Text>
+                    <ArrowUpRight size={14} color="white" />
+                  </TouchableOpacity>
+                )}
               </View>
             </LinearGradient>
+
+            {/* 🔀 TYPE SWITCHER */}
+            <View style={styles.tabContainer}>
+              <TouchableOpacity 
+                onPress={() => setActiveType('CASH')} // 🛠️ FIXED: activeType
+                style={[styles.tab, activeType === 'CASH' && { backgroundColor: theme.text, borderColor: theme.text }]}
+              >
+                <Text style={[styles.tabText, { color: activeType === 'CASH' ? theme.background : theme.subtext }]}>CASH</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                onPress={() => setActiveType('COINS')} // 🛠️ FIXED: activeType
+                style={[styles.tab, activeType === 'COINS' && { backgroundColor: theme.text, borderColor: theme.text }]}
+              >
+                <Text style={[styles.tabText, { color: activeType === 'COINS' ? theme.background : theme.subtext }]}>COINS</Text>
+              </TouchableOpacity>
+            </View>
             
             <View style={styles.sectionHeader}>
                <Receipt size={14} color={theme.subtext} />
-               <Text style={[styles.sectionTitle, { color: theme.subtext }]}>PAST TRANSACTIONS</Text>
+               <Text style={[styles.sectionTitle, { color: theme.subtext }]}>PAYMENT HISTORY</Text>
             </View>
           </View>
         )}
-        renderItem={renderTransaction}
-        ListEmptyComponent={
-          <View style={styles.empty}>
-            <View style={[styles.emptyIconCircle, { backgroundColor: theme.surface }]}>
-               <History size={40} color={theme.border} strokeWidth={1.5} />
-            </View>
-            <Text style={[styles.emptyText, { color: theme.subtext }]}>NO TRANSACTIONS YET</Text>
-          </View>
-        }
+        renderItem={({ item }) => (
+          <TransactionRow item={item} theme={theme} activeType={activeType} />
+        )}
+        ListEmptyComponent={<EmptyHistory theme={theme} />}
       />
     </View>
   );
 }
 
+const TransactionRow = ({ item, theme, activeType }: any) => {
+  const isEarn = item.type === 'EARN' || item.type === 'REFUND' || item.type === 'PAYOUT' || item.type === 'ESCROW_RELEASE';
+  return (
+    <View style={[styles.transactionRow, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+      <View style={[styles.iconBox, { backgroundColor: isEarn ? '#ECFDF5' : '#FEF2F2' }]}>
+        {isEarn ? <TrendingUp size={18} color="#10B981" strokeWidth={3} /> : <TrendingDown size={18} color="#EF4444" strokeWidth={3} />}
+      </View>
+      <View style={styles.txInfo}>
+        <Text style={[styles.txType, { color: theme.text }]}>{item.type.replace('_', ' ').toUpperCase()}</Text>
+        <Text style={[styles.txHash, { color: theme.subtext }]}>ID: {item.id.slice(0, 8).toUpperCase()}</Text>
+      </View>
+      <View style={styles.txAmount}>
+        <Text style={[styles.amountText, { color: isEarn ? '#10B981' : theme.text }]}>
+          {isEarn ? '+' : '-'} {activeType === 'CASH' ? '₦' : ''}{item.amount.toLocaleString()}
+        </Text>
+      </View>
+    </View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loaderText: { marginTop: 15, fontSize: 8, fontWeight: '900', letterSpacing: 2, opacity: 0.4 },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20, borderBottomWidth: 1.5 },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 20 },
   headerTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
-  backBtn: { width: 44, height: 44, justifyContent: 'center' },
-  scrollContent: { paddingBottom: 100 },
-  topSection: { padding: 25 },
-  balanceCard: { padding: 35, borderRadius: 40, marginBottom: 40, elevation: 12, shadowColor: '#000', shadowOpacity: 0.3, shadowRadius: 20 },
+  backBtn: { padding: 8 },
+  
+  scrollContent: { paddingHorizontal: 20 },
+  topSection: { marginBottom: 10 },
+  
+  balanceCard: { padding: 30, borderRadius: 36, marginBottom: 25 },
   balanceHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  gemHalo: { width: 32, height: 32, borderRadius: 12, backgroundColor: 'rgba(139, 92, 246, 0.15)', justifyContent: 'center', alignItems: 'center' },
-  balanceLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, color: 'rgba(255,255,255,0.6)' },
-  balanceValue: { fontSize: 48, fontWeight: '900', marginTop: 15, letterSpacing: -1.5, color: 'white' },
+  halo: { width: 36, height: 36, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
+  balanceLabel: { fontSize: 10, fontWeight: '900', color: 'rgba(255,255,255,0.7)', letterSpacing: 1 },
+  balanceValue: { fontSize: 42, fontWeight: '900', marginTop: 15, color: 'white', letterSpacing: -1 },
+  
   cardFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 30 },
-  integrityBadge: { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: 'rgba(16, 185, 129, 0.1)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10 },
-  integrityText: { fontSize: 9, fontWeight: '900', color: '#10B981', letterSpacing: 1 },
-  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 20 },
+  integrityBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.1)', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20 },
+  integrityText: { fontSize: 9, fontWeight: '900', color: '#10B981', letterSpacing: 0.5 },
+  withdrawBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: 'rgba(255,255,255,0.2)', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 14 },
+  withdrawText: { color: 'white', fontSize: 10, fontWeight: '900', letterSpacing: 1 },
+  
+  tabContainer: { flexDirection: 'row', gap: 10, marginBottom: 30 },
+  tab: { flex: 1, height: 48, borderRadius: 16, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5, borderColor: 'rgba(0,0,0,0.1)' },
+  tabText: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  
+  sectionHeader: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 15 },
   sectionTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
-  transactionRow: { flexDirection: 'row', alignItems: 'center', padding: 20, marginHorizontal: 25, borderRadius: 28, marginBottom: 15, borderWidth: 1.5 },
-  iconBox: { width: 50, height: 50, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
-  txInfo: { flex: 1, marginLeft: 15 },
-  txType: { fontSize: 13, fontWeight: '900', letterSpacing: 0.2 },
-  txHash: { fontSize: 8, fontWeight: '800', marginTop: 4, letterSpacing: 0.5, opacity: 0.4 },
+  
+  transactionRow: { flexDirection: 'row', alignItems: 'center', padding: 16, borderRadius: 20, marginBottom: 12, borderWidth: 1 },
+  iconBox: { width: 44, height: 44, borderRadius: 16, justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  txInfo: { flex: 1 },
+  txType: { fontSize: 12, fontWeight: '900', letterSpacing: 0.5, marginBottom: 4 },
+  txHash: { fontSize: 10, fontWeight: '600' },
   txAmount: { alignItems: 'flex-end' },
-  amountText: { fontSize: 17, fontWeight: '900', letterSpacing: -0.5 },
-  txDate: { fontSize: 10, fontWeight: '800', marginTop: 4, opacity: 0.5 },
-  empty: { flex: 1, alignItems: 'center', marginTop: 80, gap: 20 },
-  emptyIconCircle: { width: 100, height: 100, borderRadius: 50, justifyContent: 'center', alignItems: 'center' },
-  emptyText: { fontSize: 10, fontWeight: '900', letterSpacing: 2, opacity: 0.5 }
+  amountText: { fontSize: 14, fontWeight: '900' },
+  
+  emptyContainer: { padding: 40, alignItems: 'center', opacity: 0.6 },
+  emptyText: { marginTop: 15, fontSize: 10, fontWeight: '900', letterSpacing: 2 }
 });

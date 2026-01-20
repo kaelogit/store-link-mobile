@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   StyleSheet, TextInput, TouchableOpacity, 
-  ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, ScrollView 
+  ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, ScrollView, Keyboard 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
@@ -18,7 +18,7 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🏰 UPDATE PASSWORD v73.0
+ * 🏰 UPDATE PASSWORD v74.0
  * Purpose: Securely changing the user's password.
  * Logic: Updates account security and requires a fresh login for safety.
  */
@@ -56,6 +56,7 @@ export default function UpdatePasswordScreen() {
       return true;
     },
     onMutate: () => {
+      Keyboard.dismiss();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     },
     onSuccess: () => {

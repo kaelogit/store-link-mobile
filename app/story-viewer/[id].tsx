@@ -1,12 +1,10 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { 
   StyleSheet, Dimensions, TextInput, 
   TouchableOpacity, Animated, Platform, Pressable, 
   ActivityIndicator, KeyboardAvoidingView, Share,
-  View as RNView 
+  View as RNView, StatusBar
 } from 'react-native';
-import { useCallback } from 'react';
-import { StatusBar } from 'expo-status-bar';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
@@ -33,7 +31,7 @@ const { width, height } = Dimensions.get('window');
 const STORY_DURATION = 7000;
 
 /**
- * 🏰 STORY VIEWER v101.0
+ * 🏰 STORY VIEWER v102.0
  * Purpose: A high-speed, immersive viewer for store updates and videos.
  * Features: Tap navigation, pause on long-press, and direct shop messaging.
  */
@@ -58,6 +56,7 @@ export default function StoryViewerScreen() {
   } = useQuery({
     queryKey: ['story-queue', id],
     queryFn: async () => {
+      if (!id) throw new Error("No story ID");
       const { data: initial } = await supabase.from('stories').select('seller_id').eq('id', id).single();
       if (!initial) throw new Error("Story not found");
 
@@ -65,8 +64,8 @@ export default function StoryViewerScreen() {
         .from('stories')
         .select(`
           *,
-          seller:seller_id (*),
-          product:linked_product_id (*)
+          seller:seller_id (id, display_name, slug, logo_url, subscription_plan),
+          product:linked_product_id (id, name, price, image_urls)
         `)
         .eq('seller_id', initial.seller_id)
         .order('created_at', { ascending: true });
@@ -74,11 +73,13 @@ export default function StoryViewerScreen() {
       if (error) throw error;
 
       // Loading content: pre-load images for speed
-      data.forEach((s: any) => {
-        if (s.type === 'image') Image.prefetch(s.media_url);
+      data?.forEach((s: any) => {
+        if (s.type === 'image' && s.media_url) {
+            Image.prefetch(s.media_url);
+        }
       });
 
-      return data;
+      return data || [];
     },
     staleTime: 1000 * 60 * 5,
   });
@@ -89,6 +90,7 @@ export default function StoryViewerScreen() {
   const { data: linkedReel } = useQuery({
     queryKey: ['product-reel', currentStory?.linked_product_id],
     queryFn: async () => {
+      if (!currentStory?.linked_product_id) return null;
       const { data } = await supabase.from('reels').select('*').eq('product_id', currentStory.linked_product_id).maybeSingle();
       return data;
     },
@@ -148,6 +150,7 @@ export default function StoryViewerScreen() {
   };
 
   const exitViewer = () => {
+    if (isNavigating.current) return;
     isNavigating.current = true;
     router.back();
   };
@@ -172,7 +175,12 @@ export default function StoryViewerScreen() {
         {currentStory.type === 'video' ? (
           <VideoView player={videoPlayer} style={StyleSheet.absoluteFill} contentFit="cover" nativeControls={false} />
         ) : (
-          <Image source={currentStory.media_url} style={styles.fullMedia} contentFit="cover" cachePolicy="memory-disk" />
+          <Image 
+            source={currentStory.media_url} 
+            style={styles.fullMedia} 
+            contentFit="cover" 
+            cachePolicy="memory-disk" 
+          />
         )}
         <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent', 'rgba(0,0,0,0.7)']} style={StyleSheet.absoluteFill} />
       </RNView>
@@ -193,7 +201,7 @@ export default function StoryViewerScreen() {
       {/* 🚀 TOP HUD: Bars & Store Info */}
       <SafeAreaView style={styles.topHud} edges={['top']} pointerEvents="box-none">
         <RNView style={styles.progressRow}>
-          {allStories.map((_, index) => (
+          {allStories.map((_: any, index: number) => (
             <RNView key={`prog-${index}`} style={styles.progressBarBg}>
               <Animated.View 
                 style={[
@@ -253,14 +261,14 @@ export default function StoryViewerScreen() {
       </RNView>
 
       {/* 🛒 BOTTOM HUD: Product Info */}
-      <RNView style={[styles.bottomHud, { paddingBottom: insets.bottom + 20 }]} pointerEvents="box-none">
+      <RNView style={[styles.bottomHud, { paddingBottom: Math.max(insets.bottom, 20) }]} pointerEvents="box-none">
         
         {/* REEL LINK */}
         {linkedReel && (
           <TouchableOpacity 
             activeOpacity={0.8}
             style={styles.reelTrigger}
-            onPress={() => { isNavigating.current = true; router.push(`/(tabs)/explore`); }}
+            onPress={() => { isNavigating.current = true; router.push(`/(tabs)/explore` as any); }}
           >
             <BlurView intensity={30} tint="dark" style={styles.reelBlur}>
                <Sparkles size={14} color="#A78BFA" />

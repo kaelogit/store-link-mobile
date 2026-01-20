@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { 
   StyleSheet, TouchableOpacity, ScrollView, 
-  ActivityIndicator, Switch, RefreshControl, Platform 
+  ActivityIndicator, Switch, RefreshControl, Platform, StatusBar 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -16,7 +16,7 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 💰 REWARDS SETTINGS v79.0
+ * 💰 REWARDS SETTINGS v100.0
  * Purpose: Allows sellers to manage their customer reward program.
  * Language: Simple English so every shop owner understands their stats.
  */
@@ -116,10 +116,11 @@ export default function LoyaltyScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.text === '#000' ? "dark-content" : "light-content"} />
       
       {/* HEADER - Safe Area Protected */}
-      <View style={[styles.header, { borderBottomColor: theme.border, paddingTop: insets.top || 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+      <View style={[styles.header, { borderBottomColor: theme.border, paddingTop: Math.max(insets.top, 20) }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
           <ArrowLeft color={theme.text} size={24} strokeWidth={2.5} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>STORE REWARDS</Text>
@@ -127,8 +128,9 @@ export default function LoyaltyScreen() {
       </View>
 
       <ScrollView 
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 40 }]}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F59E0B" />}
+        showsVerticalScrollIndicator={false}
       >
         {/* REWARD STATS */}
         <View style={styles.statsGrid}>
@@ -184,15 +186,15 @@ export default function LoyaltyScreen() {
                 ))}
               </View>
               <View style={styles.yieldNote}>
-                <Zap size={10} color="#F59E0B" fill="#F59E0B" />
+                <Zap size={12} color="#F59E0B" fill="#F59E0B" />
                 <Text style={styles.yieldText}>Customers get {profile?.loyalty_percentage}% of their total order back in coins.</Text>
               </View>
             </View>
           )}
         </View>
 
-        <View style={[styles.infoBox, { backgroundColor: Colors.brand.emerald + '15' }]}>
-           <ShieldCheck color={Colors.brand.emerald} size={20} strokeWidth={2.5} />
+        <View style={[styles.infoBox, { backgroundColor: `${Colors.brand.emerald}15` }]}>
+           <ShieldCheck color={Colors.brand.emerald} size={22} strokeWidth={2.5} />
            <Text style={[styles.infoText, { color: theme.text }]}>
              Shops that offer rewards usually see more repeat customers.
            </Text>
@@ -209,28 +211,34 @@ const styles = StyleSheet.create({
     flexDirection: 'row', 
     justifyContent: 'space-between', 
     paddingHorizontal: 20, 
-    paddingVertical: 15, 
+    paddingBottom: 15, 
     alignItems: 'center', 
     borderBottomWidth: 1.5 
   },
-  headerTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
-  backBtn: { width: 44, height: 44, justifyContent: 'center' },
+  headerTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  backBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
+  
   scrollContent: { padding: 25 },
+  
   statsGrid: { flexDirection: 'row', gap: 15, marginBottom: 30, backgroundColor: 'transparent' },
   statCard: { flex: 1, padding: 22, borderRadius: 28, borderWidth: 1.5 },
   statValue: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
-  statLabel: { fontSize: 8, fontWeight: '900', color: '#9CA3AF', marginTop: 8, letterSpacing: 1.2 },
+  statLabel: { fontSize: 9, fontWeight: '900', color: '#9CA3AF', marginTop: 8, letterSpacing: 1.2 },
+  
   mainCard: { padding: 30, borderRadius: 36, borderWidth: 1.5 },
   toggleRow: { flexDirection: 'row', alignItems: 'center' },
   cardTitle: { fontSize: 22, fontWeight: '900', letterSpacing: -0.5 },
   cardSub: { fontSize: 13, marginTop: 6, fontWeight: '500', lineHeight: 20 },
+  
   percentageSection: { marginTop: 35, borderTopWidth: 1, paddingTop: 30, backgroundColor: 'transparent' },
   sectionLabel: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5, marginBottom: 20 },
   btnRow: { flexDirection: 'row', gap: 12 },
   pBtn: { flex: 1, height: 64, borderRadius: 22, borderWidth: 1.5, justifyContent: 'center', alignItems: 'center' },
   pBtnText: { fontSize: 18, fontWeight: '900' },
-  yieldNote: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 22 },
+  
+  yieldNote: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 22 },
   yieldText: { fontSize: 11, fontWeight: '700', color: '#F59E0B' },
+  
   infoBox: { flexDirection: 'row', gap: 15, padding: 22, borderRadius: 28, marginTop: 35, alignItems: 'center' },
   infoText: { flex: 1, fontSize: 13, fontWeight: '600', lineHeight: 20 }
 });

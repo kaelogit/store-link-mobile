@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   StyleSheet, TextInput, TouchableOpacity, 
-  ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform, Animated
+  ActivityIndicator, Alert, ScrollView, KeyboardAvoidingView, Platform, Animated, Keyboard
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
@@ -18,9 +18,10 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🔐 LOGIN SCREEN v72.0
+ * 🔐 LOGIN SCREEN v73.0
  * Purpose: Secure entry into the app.
  * UX: Simple English, smooth animations, and hardware feedback.
+ * Security: Integrated MFA Handshake.
  */
 export default function LoginScreen() {
   const router = useRouter();
@@ -31,8 +32,11 @@ export default function LoginScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  
+  // MFA State
   const [needsMFA, setNeedsMFA] = useState(false);
   const [mfaCode, setMfaCode] = useState('');
+  const [activeFactorId, setActiveFactorId] = useState<string | null>(null);
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const shakeAnim = useRef(new Animated.Value(0)).current;
@@ -65,12 +69,15 @@ export default function LoginScreen() {
 
       // 2. Check if Two-Factor Auth is enabled
       const { data: factors } = await supabase.auth.mfa.listFactors();
-      if (factors?.all?.some(f => f.status === 'verified')) {
+      const verifiedFactor = factors?.all?.find(f => f.status === 'verified' && f.factor_type === 'totp');
+
+      if (verifiedFactor) {
         setNeedsMFA(true);
+        setActiveFactorId(verifiedFactor.id); // 🛡️ Capture ID for step 2
         return 'MFA_REQUIRED';
       }
 
-      // 3. Load the user's latest shop and profile data
+      // 3. Load the user's latest shop and profile data (if no MFA)
       await refreshUserData();
       return 'SUCCESS';
     },
@@ -84,20 +91,26 @@ export default function LoginScreen() {
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         router.replace('/(tabs)');
       } else {
+        // MFA is required, UI stays on screen but switches view
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       }
     },
     onError: (e: any) => {
       triggerErrorShake();
-      Alert.alert("Login Failed", e.message);
+      Alert.alert("Login Failed", e.message || "Please check your credentials.");
     }
   });
 
   const handleVerifyMFA = async () => {
-    if (mfaCode.length < 6 || loginMutation.isPending) return;
+    if (mfaCode.length < 6 || !activeFactorId) return;
+    
+    // UI Feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    Keyboard.dismiss();
+
     try {
       const { error } = await supabase.auth.mfa.challengeAndVerify({
-        factorId: (await supabase.auth.mfa.listFactors()).data?.all?.[0]?.id || '',
+        factorId: activeFactorId,
         code: mfaCode,
       });
       if (error) throw error;
@@ -108,6 +121,7 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
     } catch (e: any) {
       triggerErrorShake();
+      setMfaCode(''); // Clear wrong code
       Alert.alert("Invalid Code", "The verification code you entered is incorrect.");
     }
   };
@@ -216,20 +230,23 @@ export default function LoginScreen() {
                   keyboardType="number-pad" 
                   maxLength={6} 
                   value={mfaCode} 
-                  onChangeText={setMfaCode}
+                  onChangeText={(v) => {
+                    setMfaCode(v);
+                    if (v.length === 6) Keyboard.dismiss();
+                  }}
                   autoFocus
                   selectionColor={Colors.brand.emerald}
                 />
 
                 <TouchableOpacity 
-                  style={[styles.mainBtn, { backgroundColor: theme.text }]} 
+                  style={[styles.mainBtn, { backgroundColor: theme.text }, mfaCode.length < 6 && styles.btnDisabled]} 
                   onPress={handleVerifyMFA}
-                  disabled={loginMutation.isPending || mfaCode.length < 6}
+                  disabled={mfaCode.length < 6}
                 >
-                  {loginMutation.isPending ? <ActivityIndicator color={theme.background} /> : <Text style={[styles.mainBtnText, { color: theme.background }]}>VERIFY & ENTER</Text>}
+                  <Text style={[styles.mainBtnText, { color: theme.background }]}>VERIFY & ENTER</Text>
                 </TouchableOpacity>
                 
-                <TouchableOpacity onPress={() => setNeedsMFA(false)} style={styles.abortBtn}>
+                <TouchableOpacity onPress={() => { setNeedsMFA(false); setMfaCode(''); }} style={styles.abortBtn}>
                   <Text style={[styles.abortText, { color: theme.subtext }]}>Back to Login</Text>
                 </TouchableOpacity>
               </View>
@@ -269,7 +286,7 @@ const styles = StyleSheet.create({
     gap: 12, marginTop: 40,
     elevation: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20
   },
-  btnDisabled: { opacity: 0.15 },
+  btnDisabled: { opacity: 0.3 },
   mainBtnText: { fontWeight: '900', fontSize: 14, letterSpacing: 1.5 },
   footer: { marginTop: 60 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 20, marginBottom: 35 },
@@ -278,7 +295,9 @@ const styles = StyleSheet.create({
   signupAction: { alignSelf: 'center' },
   footerText: { fontSize: 14, fontWeight: '700' },
   signupBold: { fontWeight: '900' },
-  vaultContent: { alignItems: 'center' },
+  
+  // MFA VAULT STYLES
+  vaultContent: { alignItems: 'center', width: '100%', marginTop: 20 },
   vaultIconBg: { 
     width: 110, height: 110, borderRadius: 40, 
     justifyContent: 'center', alignItems: 'center', marginBottom: 30
@@ -289,8 +308,8 @@ const styles = StyleSheet.create({
     marginTop: 15, paddingHorizontal: 25, lineHeight: 24, fontWeight: '600', opacity: 0.7 
   },
   otpField: { 
-    fontSize: 52, fontWeight: '900', textAlign: 'center', 
-    letterSpacing: 12, marginVertical: 40, width: '100%',
+    fontSize: 48, fontWeight: '900', textAlign: 'center', 
+    letterSpacing: 10, marginVertical: 40, width: '100%',
     fontVariant: ['tabular-nums']
   },
   abortBtn: { marginTop: 30, padding: 10 },

@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { 
   StyleSheet, TouchableOpacity, 
-  ActivityIndicator, Alert, Dimensions, Animated 
+  ActivityIndicator, Alert, Animated, View as RNView 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -18,7 +18,7 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🎯 ROLE SELECTION v82.0
+ * 🎯 ROLE SELECTION v83.0
  * Purpose: Let the user choose between shopping or selling.
  * Logic: All new shop owners start with a 14-day free trial.
  */
@@ -39,17 +39,18 @@ export default function RoleSetupScreen() {
     setSelectedRole(target);
     
     // Animate the selected card to pop slightly
-    Animated.spring(target === 'collector' ? collectorScale : merchantScale, {
-      toValue: 1.03,
-      useNativeDriver: true,
-      friction: 7
-    }).start();
-    
-    // Reset the other card
-    Animated.spring(target === 'collector' ? merchantScale : collectorScale, {
-      toValue: 1,
-      useNativeDriver: true,
-    }).start();
+    Animated.parallel([
+      Animated.spring(target === 'collector' ? collectorScale : merchantScale, {
+        toValue: 1.05,
+        useNativeDriver: true,
+        friction: 6,
+        tension: 100
+      }),
+      Animated.spring(target === 'collector' ? merchantScale : collectorScale, {
+        toValue: 1,
+        useNativeDriver: true,
+      })
+    ]).start();
   };
 
   /**
@@ -66,8 +67,10 @@ export default function RoleSetupScreen() {
     
     try {
       const isMerchant = selectedRole === 'merchant';
+      
+      // 📅 Calculate 14-Day Free Trial safely
       const trialEndDate = new Date();
-      trialEndDate.setDate(trialEndDate.getDate() + 14); // 📅 14-Day Free Trial
+      trialEndDate.setDate(trialEndDate.getDate() + 14);
       
       const { error } = await supabase
         .from('profiles')
@@ -108,7 +111,7 @@ export default function RoleSetupScreen() {
       { 
         backgroundColor: theme.background,
         paddingTop: insets.top + 20,
-        paddingBottom: insets.bottom + 20
+        paddingBottom: Math.max(insets.bottom, 20)
       }
     ]}>
       <View style={styles.header}>
@@ -147,6 +150,8 @@ export default function RoleSetupScreen() {
         </Animated.View>
       </View>
 
+      <View style={styles.spacer} />
+
       <View style={styles.footer}>
         <TouchableOpacity 
           activeOpacity={0.8}
@@ -173,18 +178,31 @@ export default function RoleSetupScreen() {
   );
 }
 
-const RoleCard = ({ title, desc, icon, isActive, onPress, color, theme }: any) => (
+interface RoleCardProps {
+  title: string;
+  desc: string;
+  icon: React.ReactElement;
+  isActive: boolean;
+  onPress: () => void;
+  color: string;
+  theme: any;
+}
+
+const RoleCard = ({ title, desc, icon, isActive, onPress, color, theme }: RoleCardProps) => (
   <TouchableOpacity 
     activeOpacity={0.9}
     style={[
       styles.card, 
       { backgroundColor: theme.background, borderColor: theme.surface },
-      isActive && { borderColor: theme.text, backgroundColor: theme.surface }
+      isActive && { borderColor: color, backgroundColor: theme.surface }
     ]} 
     onPress={onPress}
   >
     <View style={[styles.iconContainer, { backgroundColor: theme.surface }, isActive && { backgroundColor: color }]}>
-      {React.cloneElement(icon, { color: isActive ? theme.background : color, strokeWidth: 2.5 })}
+      {React.cloneElement(icon as React.ReactElement<any>, { 
+        color: isActive ? theme.background : color, 
+        strokeWidth: 2.5 
+      })}    
     </View>
     <View style={styles.cardInfo}>
       <Text style={[styles.cardTitle, { color: theme.text }]}>{title}</Text>
@@ -205,16 +223,21 @@ const styles = StyleSheet.create({
   progressActive: { width: '50%', height: '100%', borderRadius: 10 },
   title: { fontSize: 36, fontWeight: '900', lineHeight: 40, letterSpacing: -1.5 },
   subTitle: { fontSize: 15, marginTop: 12, fontWeight: '600', lineHeight: 22 },
+  
   optionsContainer: { gap: 18, backgroundColor: 'transparent' },
+  
   card: { flexDirection: 'row', alignItems: 'center', padding: 25, borderRadius: 32, borderWidth: 2 },
   iconContainer: { width: 64, height: 64, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   cardInfo: { flex: 1, marginLeft: 16, backgroundColor: 'transparent' },
   cardTitle: { fontSize: 16, fontWeight: '900', letterSpacing: 0.5 },
   cardDesc: { fontSize: 13, fontWeight: '500', marginTop: 4, lineHeight: 18 },
   indicator: { width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', marginLeft: 10 },
-  footer: { marginTop: 'auto', marginBottom: 20, alignItems: 'center', backgroundColor: 'transparent' },
+  
+  spacer: { flex: 1 },
+  
+  footer: { marginBottom: 10, alignItems: 'center', backgroundColor: 'transparent' },
   actionBtn: { width: '100%', height: 70, borderRadius: 24, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12 },
-  actionBtnDisabled: { opacity: 0.15 },
+  actionBtnDisabled: { opacity: 0.2 },
   actionBtnText: { fontWeight: '900', fontSize: 14, letterSpacing: 1.5 },
   footerNote: { fontSize: 9, fontWeight: '800', marginTop: 25, letterSpacing: 1 }
 });

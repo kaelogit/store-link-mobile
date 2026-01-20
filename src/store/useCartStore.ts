@@ -6,9 +6,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Product, SellerMinimal } from '../types';
 
 /**
- * 🛒 CART STORE v79.0
+ * 🛒 CART STORE v80.0
  * Purpose: Manages the shopping bag, item quantities, and coin discounts.
- * Logic: Simple English for clear developer communication.
+ * Handshake: Wired to ensure 100% price accuracy during Checkout.
  */
 
 interface CartItem {
@@ -48,7 +48,7 @@ export const useCartStore = create<CartState>()(
 
       /**
        * ➕ ADD ITEM TO BAG
-       * Increases the quantity if the item is already there.
+       * Logic: Increments quantity if duplicate, otherwise adds new node.
        */
       addToCart: (product, seller) => {
         const currentCart = get().cart;
@@ -74,7 +74,7 @@ export const useCartStore = create<CartState>()(
 
       /**
        * 🔢 CHANGE QUANTITY
-       * Ensures the number of items never goes below 1.
+       * Logic: Prevents zero or negative quantities.
        */
       updateQty: (productId, amount) => {
         set((state) => ({
@@ -98,18 +98,18 @@ export const useCartStore = create<CartState>()(
 
       /**
        * 📊 CALCULATE TOTALS
-       * Rule: You can only use coins for up to 5% of the total price.
+       * Rule: 2026 Loyalty Standard — Coins cap at 5% of subtotal.
        */
       getCartTotals: (userCoinBalance) => {
         const { cart, useCoins } = get();
         
-        // Calculate the base price of all items
+        // Base math
         const subtotal = cart.reduce((sum, item) => sum + (item.product.price * item.qty), 0);
         const cartCount = cart.reduce((sum, item) => sum + item.qty, 0);
         
-        // Apply the 5% discount limit
-        const maxDiscount = Math.floor(subtotal * 0.05); 
-        const coinDiscount = useCoins ? Math.min(userCoinBalance, maxDiscount) : 0;
+        // Applying the "StoreLink 5% Cap"
+        const maxDiscountAllowed = Math.floor(subtotal * 0.05); 
+        const coinDiscount = useCoins ? Math.min(userCoinBalance, maxDiscountAllowed) : 0;
         const finalTotal = subtotal - coinDiscount;
 
         return { subtotal, cartCount, coinDiscount, finalTotal };
@@ -117,7 +117,7 @@ export const useCartStore = create<CartState>()(
 
       /**
        * 📦 GROUP BY SHOP
-       * Sorts the items so they can be processed as separate orders for each seller.
+       * Logic: Splits the cart into separate "Seller Buckets" for atomic orders.
        */
       getGroupedCart: () => {
         return get().cart.reduce((acc, item: CartItem) => {
@@ -131,7 +131,7 @@ export const useCartStore = create<CartState>()(
       },
     }),
     {
-      name: 'storelink-v79-cart', // Updated versioning
+      name: 'storelink-cart-v80', // Version bump for data integrity
       storage: createJSONStorage(() => AsyncStorage),
     }
   )

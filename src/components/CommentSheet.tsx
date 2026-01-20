@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, Dimensions } from 'react-native';
+import { StyleSheet, TouchableOpacity, ActivityIndicator, Platform, Alert, Dimensions, View as RNView } from 'react-native';
 import BottomSheet, { 
   BottomSheetFlatList, 
   BottomSheetTextInput, 
@@ -48,8 +48,8 @@ interface CommentSheetProps {
 }
 
 /**
- * 💬 REVIEWS HUB v84.0
- * Features: Threaded replies, Side-aligned UX, and Diamond Prestige recognition.
+ * 💬 REVIEWS HUB v86.0
+ * Purpose: High-fidelity threaded reviews with Diamond Prestige recognition.
  */
 export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
   const theme = Colors[useColorScheme() ?? 'light'];
@@ -59,7 +59,7 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
   const [newComment, setNewComment] = useState('');
   const [replyTo, setReplyTo] = useState<Comment | null>(null);
 
-  /** 📡 DATA LOAD */
+  /** 📡 DATA SYNC: Fetching threaded comments */
   const { 
     data: comments = [], 
     isLoading 
@@ -68,7 +68,7 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
     queryFn: async () => {
       if (!product?.id) return [];
       const { data, error } = await supabase
-        .from('product_comments') // Ensure this view/table exists
+        .from('product_comments')
         .select(`
           *,
           profiles:user_id (slug, logo_url, prestige_weight, is_verified, subscription_plan)
@@ -83,7 +83,7 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
     staleTime: 1000 * 60 * 2,
   });
 
-  /** 🚀 POST LOGIC */
+  /** 🚀 POST LOGIC: Integrated with Threaded Replies */
   const postMutation = useMutation({
     mutationFn: async (content: string) => {
       return supabase.from('product_comments').insert({
@@ -108,11 +108,12 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
   };
 
   const renderBackdrop = useCallback(
-    (props: any) => <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.4} />,
+    (props: any) => <BottomSheetBackdrop {...props} disappearsOnIndex={-1} appearsOnIndex={0} opacity={0.5} />,
     []
   );
 
   const renderComment = ({ item, isChild = false }: { item: Comment, isChild?: boolean }) => {
+    // 💎 Logic: Buyer or Seller Diamond recognition
     const isDiamond = item.profiles?.subscription_plan === 'diamond';
     const isOwner = item.user_id === currentUser?.id;
 
@@ -120,23 +121,24 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
       <View style={[
         styles.commentRow, 
         isChild && styles.replyIndent,
-        isDiamond && { backgroundColor: `${Colors.brand.violet}10`, borderRadius: 18, padding: 12 }
+        isDiamond && { backgroundColor: `${Colors.brand.violet}10`, borderRadius: 20, padding: 12, marginHorizontal: -12 }
       ]}>
         <Image 
           source={item.profiles?.logo_url} 
-          style={styles.avatar} 
+          style={[styles.avatar, isDiamond && { borderColor: '#8B5CF6', borderWidth: 1.5 }]} 
           contentFit="cover" 
-          transition={200} 
+          transition={200}
+          cachePolicy="memory-disk" 
         />
         
         <View style={styles.textStack}>
           <View style={styles.commentHeader}>
             <View style={styles.nameRow}>
               <Text style={[styles.slug, { color: theme.text }]}>@{item.profiles?.slug?.toUpperCase()}</Text>
-              {isDiamond && <Gem size={10} color="#8B5CF6" fill="#8B5CF6" />}
+              {isDiamond && <Gem size={10} color="#8B5CF6" fill="#8B5CF6" style={{ marginLeft: 4 }} />}
             </View>
             <Text style={[styles.time, { color: theme.subtext }]}>
-              {formatDistanceToNow(new Date(item.created_at), { addSuffix: false })}
+              {item.created_at ? formatDistanceToNow(new Date(item.created_at), { addSuffix: false }) : 'Just now'}
             </Text>
           </View>
           
@@ -147,7 +149,7 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
               <Text style={[styles.footerBtn, { color: theme.subtext }]}>REPLY</Text>
             </TouchableOpacity>
             {isOwner && (
-              <TouchableOpacity onPress={() => Alert.alert("Delete", "Remove this comment?", [{text: "Cancel"}, {text: "Delete"}])}>
+              <TouchableOpacity onPress={() => Alert.alert("Delete Review?", "This action cannot be undone.", [{text: "Cancel"}, {text: "Delete", style: "destructive"}])}>
                 <Trash2 size={12} color="#EF4444" opacity={0.6} />
               </TouchableOpacity>
             )}
@@ -166,17 +168,17 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
     <BottomSheet
       ref={sheetRef} 
       index={-1} 
-      snapPoints={['75%', '94%']} 
+      snapPoints={['75%', '90%']} 
       enablePanDownToClose
       backdropComponent={renderBackdrop}
-      containerStyle={styles.sideLayout}
-      handleIndicatorStyle={{ backgroundColor: theme.border, width: 36 }}
-      backgroundStyle={{ backgroundColor: theme.background, borderRadius: 40 }}
+      handleIndicatorStyle={{ backgroundColor: theme.border, width: 40 }}
+      backgroundStyle={{ backgroundColor: theme.background }}
       keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
     >
       <View style={styles.inner}>
         <View style={[styles.header, { borderBottomColor: theme.surface }]}>
-          <MessageSquare size={16} color={theme.text} strokeWidth={3} />
+          <MessageSquare size={18} color={theme.text} strokeWidth={2.5} />
           <Text style={[styles.title, { color: theme.text }]}>REVIEWS</Text>
           <View style={[styles.badge, { backgroundColor: theme.surface }]}>
             <Text style={[styles.badgeText, { color: theme.text }]}>{comments.length}</Text>
@@ -185,7 +187,8 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
 
         <BottomSheetFlatList
           data={comments.filter(c => !c.parent_id)}
-          keyExtractor={(item: any) => `root-${item.id}`} // FIXED: Empty keyExtractor
+          keyExtractor={(item: Comment) => item.id}
+          showsVerticalScrollIndicator={false}
           renderItem={({ item }: { item: any }) => (
             <View style={styles.transparentBg}>
               {renderComment({ item })}
@@ -206,7 +209,11 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
         />
 
         {/* INPUT DOCK */}
-        <BlurView intensity={Platform.OS === 'ios' ? 80 : 0} tint={theme.background === '#000000' ? 'dark' : 'light'}>
+        <BlurView 
+          intensity={Platform.OS === 'ios' ? 80 : 0} 
+          tint={theme.background === '#000000' ? 'dark' : 'light'}
+          style={styles.blurContainer}
+        >
           <View style={[styles.inputDock, { borderTopColor: theme.surface }]}>
             {replyTo && (
               <View style={styles.replyBar}>
@@ -217,7 +224,7 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
             )}
             <View style={[styles.inputField, { backgroundColor: theme.surface, borderColor: theme.border }]}>
               <BottomSheetTextInput
-                placeholder="Write a comment..."
+                placeholder="Write a review..."
                 placeholderTextColor={`${theme.subtext}80`}
                 style={[styles.textInput, { color: theme.text }]}
                 value={newComment}
@@ -240,37 +247,41 @@ export const CommentSheet = ({ product, sheetRef }: CommentSheetProps) => {
 };
 
 const styles = StyleSheet.create({
-  sideLayout: { 
-    marginLeft: width * 0.15, 
-    width: width * 0.85 
-  },
   inner: { flex: 1 },
   transparentBg: { backgroundColor: 'transparent' },
-  header: { flexDirection: 'row', gap: 10, padding: 22, alignItems: 'center', borderBottomWidth: 1.5 },
-  title: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  header: { flexDirection: 'row', gap: 10, padding: 20, alignItems: 'center', borderBottomWidth: 1.5, justifyContent: 'center' },
+  title: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
   badge: { paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 },
   badgeText: { fontSize: 10, fontWeight: '900' },
-  list: { padding: 20, paddingBottom: 100 },
+  
+  list: { padding: 20, paddingBottom: 150 },
   commentRow: { flexDirection: 'row', marginBottom: 25, gap: 12 },
   replyIndent: { marginLeft: 35, borderLeftWidth: 1.5, borderLeftColor: 'rgba(0,0,0,0.05)', paddingLeft: 12 },
-  avatar: { width: 34, height: 34, borderRadius: 12, backgroundColor: '#F3F4F6' },
+  
+  avatar: { width: 36, height: 36, borderRadius: 14, backgroundColor: '#F3F4F6' },
   textStack: { flex: 1 },
-  commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 5 },
+  commentHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 },
   nameRow: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  slug: { fontSize: 11, fontWeight: '900' },
-  time: { fontSize: 8, fontWeight: '800', opacity: 0.6 },
-  content: { fontSize: 13, lineHeight: 19, fontWeight: '600' },
+  slug: { fontSize: 12, fontWeight: '900' },
+  time: { fontSize: 9, fontWeight: '700', opacity: 0.6 },
+  content: { fontSize: 14, lineHeight: 20, fontWeight: '500' },
+  
   footer: { flexDirection: 'row', gap: 15, marginTop: 10, alignItems: 'center' },
-  footerBtn: { fontSize: 8, fontWeight: '900', letterSpacing: 1 },
-  likeCol: { alignItems: 'center', gap: 4, paddingTop: 2 },
+  footerBtn: { fontSize: 9, fontWeight: '900', letterSpacing: 1 },
+  
+  likeCol: { alignItems: 'center', gap: 4, paddingTop: 4 },
   likeCount: { fontSize: 9, fontWeight: '900' },
-  inputDock: { padding: 15, borderTopWidth: 1.5 },
+  
+  blurContainer: { borderTopLeftRadius: 0, borderTopRightRadius: 0, overflow: 'hidden' },
+  inputDock: { padding: 15, paddingBottom: Platform.OS === 'ios' ? 40 : 20, borderTopWidth: 1.5 },
   replyBar: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12, backgroundColor: 'rgba(139, 92, 246, 0.1)', padding: 10, borderRadius: 12 },
-  replyText: { flex: 1, fontSize: 9, fontWeight: '900', color: '#8B5CF6', letterSpacing: 0.5 },
+  replyText: { flex: 1, fontSize: 10, fontWeight: '900', color: '#8B5CF6', letterSpacing: 0.5 },
+  
   inputField: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8, borderWidth: 1.5 },
-  textInput: { flex: 1, fontSize: 14, fontWeight: '600', maxHeight: 80, paddingVertical: 5 },
+  textInput: { flex: 1, fontSize: 15, fontWeight: '600', maxHeight: 80, paddingVertical: 5 },
   sendBtn: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
+  
   empty: { padding: 80, alignItems: 'center' },
-  emptyTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
-  emptySub: { fontSize: 12, textAlign: 'center', marginTop: 10, fontWeight: '600', opacity: 0.5 }
+  emptyTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  emptySub: { fontSize: 13, textAlign: 'center', marginTop: 10, fontWeight: '500', opacity: 0.6 }
 });

@@ -1,8 +1,9 @@
 import React from 'react';
-import { StyleSheet, TouchableOpacity, Modal, Dimensions, Platform } from 'react-native';
+import { StyleSheet, TouchableOpacity, Modal, Dimensions, Platform, View as RNView } from 'react-native';
 import { MessageSquare, X, ShieldCheck, ArrowRight, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // App Components
 import { View, Text } from './Themed';
@@ -20,7 +21,7 @@ interface ContactBridgeProps {
 }
 
 /**
- * 🏰 CONTACT BRIDGE v25.0
+ * 🏰 CONTACT BRIDGE v26.0
  * Purpose: A security gate that encourages users to use the internal chat for safety.
  * Logic: Provides a briefing on protection benefits before starting a conversation.
  */
@@ -33,6 +34,7 @@ export const ContactBridge = ({
 }: ContactBridgeProps) => {
   const colorScheme = useColorScheme();
   const theme = Colors[colorScheme ?? 'light'];
+  const insets = useSafeAreaInsets();
 
   const handleOpenChat = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -46,13 +48,24 @@ export const ContactBridge = ({
       animationType="fade" 
       onRequestClose={onClose}
       statusBarTranslucent
+      accessibilityViewIsModal={true}
     >
       <View style={styles.masterOverlay}>
-        <BlurView intensity={25} tint="dark" style={StyleSheet.absoluteFill}>
+        <BlurView 
+            intensity={Platform.OS === 'ios' ? 25 : 50} 
+            tint="dark" 
+            style={StyleSheet.absoluteFill}
+        >
           <TouchableOpacity style={styles.dismiss} activeOpacity={1} onPress={onClose} />
         </BlurView>
         
-        <View style={[styles.sheet, { backgroundColor: theme.background }]}>
+        <View style={[
+            styles.sheet, 
+            { 
+                backgroundColor: theme.background, 
+                paddingBottom: Math.max(insets.bottom, 30) 
+            }
+        ]}>
           {/* Pull handle for visual cue */}
           <View style={[styles.handle, { backgroundColor: theme.border }]} />
           
@@ -60,7 +73,7 @@ export const ContactBridge = ({
             <View>
               <View style={styles.titleRow}>
                 <Text style={[styles.title, { color: theme.text }]}>Secure Inquiry</Text>
-                {isDiamond && <Zap size={14} color={Colors.brand.gold} fill={Colors.brand.gold} />}
+                {isDiamond && <Zap size={16} color={Colors.brand.gold} fill={Colors.brand.gold} />}
               </View>
               <Text style={[styles.subtitle, { color: theme.subtext }]}>Connecting with @{merchantName.toLowerCase()}</Text>
             </View>
@@ -112,7 +125,6 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 36, 
     borderTopRightRadius: 36, 
     padding: 30, 
-    paddingBottom: Platform.OS === 'ios' ? 60 : 40,
   },
   handle: { width: 36, height: 4, borderRadius: 10, alignSelf: 'center', marginBottom: 25, opacity: 0.3 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 30 },
@@ -120,15 +132,18 @@ const styles = StyleSheet.create({
   title: { fontSize: 24, fontWeight: '900', letterSpacing: -0.5 },
   closeBtn: { width: 40, height: 40, borderRadius: 14, justifyContent: 'center', alignItems: 'center' },
   subtitle: { fontSize: 11, marginTop: 4, fontWeight: '800', textTransform: 'uppercase', opacity: 0.5, letterSpacing: 1 },
+  
   briefing: { gap: 18, marginBottom: 35 },
   infoRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  infoText: { fontSize: 13, fontWeight: '700', opacity: 0.8 },
+  infoText: { fontSize: 13, fontWeight: '700', opacity: 0.8, flex: 1 },
+  
   chatBtn: { 
     width: '100%', height: 72, borderRadius: 24, 
     flexDirection: 'row', justifyContent: 'center', alignItems: 'center', 
     gap: 12, elevation: 8 
   },
   chatBtnText: { fontWeight: '900', fontSize: 14, letterSpacing: 1.5 },
+  
   footer: { marginTop: 30, paddingHorizontal: 10 },
   footerNote: { textAlign: 'center', fontSize: 9, fontWeight: '900', letterSpacing: 1.2, lineHeight: 14 }
 });

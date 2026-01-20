@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { 
   Dimensions, 
-  Image, 
   StyleSheet, 
   TouchableOpacity, 
   ActivityIndicator,
-  Platform 
+  Platform,
+  StatusBar
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -28,12 +28,13 @@ import { View, Text } from '../src/components/Themed';
 import Colors from '../src/constants/Colors';
 import { useColorScheme } from '../src/components/useColorScheme';
 
-const { width, height } = Dimensions.get('window');
+const { width } = Dimensions.get('window');
 
 /**
- * 🏰 POST SCREEN v97.0
+ * 🏰 POST SCREEN v99.0
  * Purpose: Central hub for sellers to post products, videos, or stories.
  * Security: Checks account status, subscription, and verification before allowing posts.
+ * Fix: Improved Trial & Subscription detection logic.
  */
 export default function PostScreen() {
   const router = useRouter();
@@ -65,23 +66,32 @@ export default function PostScreen() {
   const isMerchant = profile?.is_seller === true;
   const isIdentityVerified = profile?.verification_status === 'verified';
   
-  // TRIAL CHECK: 14-day free window
+  // 💰 TRIAL ENGINE
+  const now = new Date();
   let isTrialActive = false;
+  
+  // Check 1: Check Explicit Status
+  const isExplicitTrial = profile?.subscription_status === 'trial' || profile?.subscription_status === 'trialing';
+  
+  // Check 2: Check Date
   if (profile?.trial_ends_at) {
-    try {
-      const trialExpiry = new Date(profile.trial_ends_at);
-      isTrialActive = trialExpiry > new Date() && !isNaN(trialExpiry.getTime());
-    } catch (error) {
-      isTrialActive = false;
-    }
+    const trialExpiry = new Date(profile.trial_ends_at);
+    isTrialActive = !isNaN(trialExpiry.getTime()) && trialExpiry > now;
   }
+
+  // Final Trial Verdict
+  const effectiveTrial = isExplicitTrial || isTrialActive;
   
   // SUBSCRIPTION CHECK
   const plan = profile?.subscription_plan?.toLowerCase() || 'none';
-  const isExpired = profile?.subscription_expiry ? new Date(profile.subscription_expiry) < new Date() : false;
+  const isExpired = profile?.subscription_expiry 
+    ? new Date(profile.subscription_expiry) < now 
+    : false;
   
   const hasActivePlan = (plan === 'standard' || plan === 'diamond') && !isExpired;
-  const hasSellerAccess = isTrialActive || hasActivePlan;
+  
+  // 🛡️ ACCESS GRANTED IF: Trialing OR Active Plan
+  const hasSellerAccess = effectiveTrial || hasActivePlan;
 
   /**
    * 🎭 GATE 1: UPGRADE TO SELLER
@@ -92,10 +102,9 @@ export default function PostScreen() {
       <GateScreen 
         icon={<TrendingUp size={42} color={Colors.brand.emerald} />}
         title="START YOUR BRAND"
-        description={"You're currently browsing as a customer, but you can start selling today. Activate your seller profile to list products and reach shoppers.\n\nOpening your shop allows you to:\n1. Build a professional online storefront\n2. Post videos and story updates"}        
+        description={"You're currently browsing as a customer, but you can start selling today. Activate your seller profile to list products and reach shoppers.\n\nOpening your shop allows you to:\n1. Build a professional online storefront\n2. Post videos and story updates"}         
         btnText="OPEN MY SHOP"
         onPress={() => router.push('/onboarding/role-setup')}
-        router={router}
         theme={theme}
         accentColor={Colors.brand.emerald}
         insets={insets}
@@ -104,7 +113,7 @@ export default function PostScreen() {
   }
 
   /**
-   * 💰 GATE 2: RENEW SUBSCRIPTION
+   * 💰 GATE 2: RENEW ACCESS
    * Shown if the trial or plan has expired.
    */
   if (!hasSellerAccess) {
@@ -114,8 +123,7 @@ export default function PostScreen() {
         title="RENEW ACCESS"
         description="Your subscription has ended. Your shop is currently in view-only mode. To resume posting new products and videos, please renew your plan.\n\nRenewing allows you to:\n1. Keep items visible in the marketplace\n2. Share new products to the local feed."
         btnText="SEE PLANS"
-        onPress={() => router.push('/seller/subscription')}
-        router={router}
+        onPress={() => router.push('/subscription' as any)}
         theme={theme}
         accentColor={Colors.brand.emerald}
         insets={insets}
@@ -132,10 +140,9 @@ export default function PostScreen() {
       <GateScreen 
         icon={<UserCheck size={42} color="#3B82F6" />}
         title="IDENTITY CHECK"
-        description={"To keep our community safe, we require all sellers to verify their identity. Verified sellers build more trust and sell items faster.\n\nProceed to:\n1. Upload your identity documents\n2. Complete a quick photo scan\n3. Start posting once approved."}        
+        description={"To keep our community safe, we require all sellers to verify their identity. Verified sellers build more trust and sell items faster.\n\nProceed to:\n1. Upload your identity documents\n2. Complete a quick photo scan\n3. Start posting once approved."}         
         btnText="START VERIFICATION"
         onPress={() => router.push('/seller/verification')}
-        router={router}
         theme={theme}
         accentColor="#3B82F6"
         insets={insets}
@@ -144,14 +151,16 @@ export default function PostScreen() {
   }
 
   return (
-    <View style={[styles.creatorContainer, { backgroundColor: theme.background, paddingTop: insets.top }]}>
+    <View style={[styles.creatorContainer, { backgroundColor: theme.background, paddingTop: Math.max(insets.top, 20) }]}>
+      <StatusBar barStyle={theme.text === '#000' ? "dark-content" : "light-content"} />
+      
       {/* HEADER */}
       <View style={[styles.creatorHeader, { borderBottomColor: theme.border }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.closeBtn} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             <X color={theme.text} size={28} strokeWidth={2.5} />
           </TouchableOpacity>
           <Text style={[styles.creatorTitle, { color: theme.text }]}>NEW POST</Text>
-          <View style={{ width: 28 }} />
+          <View style={{ width: 40 }} />
       </View>
 
       <View style={styles.optionsList}>
@@ -170,7 +179,7 @@ export default function PostScreen() {
             sub="Share a short video to the feed"
             icon={<Play color={Colors.brand.emerald} fill={Colors.brand.emerald} size={26} />}
             onPress={() => router.push('/seller/post-reel')}
-            activeColor={Colors.brand.emerald + '15'}
+            activeColor={`${Colors.brand.emerald}15`}
             theme={theme}
           />
 
@@ -179,7 +188,7 @@ export default function PostScreen() {
             sub="Share a temporary 12-hour update"
             icon={<Camera color={Colors.brand.gold} fill={Colors.brand.gold} size={26} />}
             onPress={() => router.push('/seller/post-story')}
-            activeColor={Colors.brand.gold + '15'}
+            activeColor={`${Colors.brand.gold}15`}
             theme={theme}
           />
       </View>
@@ -192,26 +201,39 @@ export default function PostScreen() {
   );
 }
 
+// 🧩 GATE SCREEN COMPONENT
+interface GateScreenProps {
+  icon: React.ReactNode;
+  title: string;
+  description: string;
+  btnText: string;
+  onPress: () => void;
+  accentColor: string;
+  theme: any;
+  insets: any;
+}
+
 const GateScreen = ({ 
   icon, 
   title, 
   description, 
   btnText, 
   onPress, 
-  router, 
   accentColor,
   theme,
   insets
-}: any) => {
+}: GateScreenProps) => {
+  const router = useRouter();
+  
   return (
     <View style={[
       styles.gateContainer, 
       { 
         backgroundColor: theme.background,
-        borderColor: accentColor + '30',
+        borderColor: `${accentColor}30`,
         borderWidth: 2,
-        marginTop: insets.top + 10,
-        marginBottom: insets.bottom + 10
+        marginTop: Math.max(insets.top, 20) + 10,
+        marginBottom: Math.max(insets.bottom, 10) + 10
       }
     ]}>
       <TouchableOpacity 
@@ -230,8 +252,8 @@ const GateScreen = ({
         <View style={[
           styles.iconPill, 
           { 
-            backgroundColor: accentColor + '10',
-            borderColor: accentColor + '30',
+            backgroundColor: `${accentColor}10`,
+            borderColor: `${accentColor}30`,
             borderWidth: 2,
           }
         ]}>
@@ -280,12 +302,22 @@ const GateScreen = ({
           </TouchableOpacity>
         </View>
       </View>
-      <View style={[styles.bottomAccent, { backgroundColor: accentColor + '40' }]} />
+      <View style={[styles.bottomAccent, { backgroundColor: `${accentColor}40` }]} />
     </View>
   );
 };
 
-const ActionItem = ({ title, sub, icon, onPress, activeColor, theme }: any) => (
+// 🧩 ACTION ITEM COMPONENT
+interface ActionItemProps {
+  title: string;
+  sub: string;
+  icon: React.ReactNode;
+  onPress: () => void;
+  activeColor?: string;
+  theme: any;
+}
+
+const ActionItem = ({ title, sub, icon, onPress, activeColor, theme }: ActionItemProps) => (
   <TouchableOpacity 
     style={[styles.optionBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} 
     onPress={() => {
@@ -297,7 +329,7 @@ const ActionItem = ({ title, sub, icon, onPress, activeColor, theme }: any) => (
     <View style={[
       styles.iconBox, 
       { backgroundColor: theme.background }, 
-      activeColor && { backgroundColor: activeColor }
+      activeColor ? { backgroundColor: activeColor } : {}
     ]}>
       {icon}
     </View>
@@ -312,6 +344,7 @@ const ActionItem = ({ title, sub, icon, onPress, activeColor, theme }: any) => (
 const styles = StyleSheet.create({
   loadingScreen: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   syncText: { marginTop: 15, fontSize: 10, fontWeight: '900', letterSpacing: 1.5, color: '#999' },
+  
   gateContainer: { flex: 1, borderRadius: 32, margin: 16, overflow: 'hidden', elevation: 8 },
   gateContent: { flex: 1, paddingHorizontal: 25, alignItems: 'center', paddingTop: 30 },
   iconPill: { width: 90, height: 90, borderRadius: 32, justifyContent: 'center', alignItems: 'center', marginBottom: 30 },
@@ -320,21 +353,27 @@ const styles = StyleSheet.create({
   gateTitle: { fontSize: 28, fontWeight: '900', letterSpacing: -0.5, textAlign: 'center' },
   divider: { width: 50, height: 4, borderRadius: 2, marginVertical: 20 },
   gateDescription: { fontSize: 16, lineHeight: 24, fontWeight: '600', textAlign: 'center', marginBottom: 40, paddingHorizontal: 10 },
+  
   actionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, paddingVertical: 20, borderRadius: 24, width: '100%', shadowOpacity: 0.3, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 6 },
   actionBtnText: { fontSize: 14, fontWeight: '900', color: '#FFFFFF', letterSpacing: 1 },
+  
   cancelBtn: { marginTop: 25, padding: 10 },
   cancelText: { fontSize: 13, fontWeight: '800', letterSpacing: 0.5, opacity: 0.6 },
   bottomAccent: { height: 6, width: '100%' },
+  
   creatorContainer: { flex: 1 },
   creatorHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1 },
   closeBtn: { width: 40, height: 40, justifyContent: 'center' },
   creatorTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
+  
   optionsList: { padding: 25, gap: 16 },
   instruction: { fontSize: 10, fontWeight: '900', letterSpacing: 2, marginBottom: 5 },
+  
   optionBtn: { flexDirection: 'row', alignItems: 'center', padding: 20, borderRadius: 32, borderWidth: 1.5 },
   iconBox: { width: 56, height: 56, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
   optionTitle: { fontSize: 16, fontWeight: '900', letterSpacing: -0.5 },
   optionSub: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  
   creatorFooter: { marginTop: 'auto', alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 8 },
   footerNote: { fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5 }
 });

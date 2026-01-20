@@ -16,18 +16,14 @@ import * as Haptics from 'expo-haptics';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Image } from 'expo-image';
 
-// App Components
+// App Connection
 import { supabase } from '../../src/lib/supabase';
 import { useUserStore } from '../../src/store/useUserStore'; 
 import { View, Text } from '../../src/components/Themed';
 import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
+import { Order, Profile } from '../../src/types';
 
-/**
- * 🏰 ORDER DETAIL v101.0
- * Purpose: A clear, high-speed view for tracking and managing specific orders.
- * Logic: Synchronizes order status with chat conversations automatically.
- */
 export default function OrderDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
@@ -36,12 +32,12 @@ export default function OrderDetailScreen() {
   const { profile } = useUserStore();
   const queryClient = useQueryClient();
 
-  /** 🛡️ DATA SYNC: Fetching latest order info */
+  /** 🛡️ DATA SYNC: Fetching latest order info with the Wired Chat ID */
   const { 
     data: order, 
     isLoading, 
     refetch 
-  } = useQuery({
+  } = useQuery<Order>({
     queryKey: ['order-detail', id],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -49,34 +45,46 @@ export default function OrderDetailScreen() {
         .select(`
           *,
           order_items (*, product:product_id(name, image_urls)),
-          merchant:seller_id (id, display_name, slug, logo_url, phone_number, location, subscription_plan),
-          buyer:user_id (id, display_name, slug, phone_number, location)
+          merchant:seller_id (id, display_name, slug, logo_url, phone_number, location_city, subscription_plan),
+          buyer:user_id (id, display_name, slug, phone_number, location_city),
+          chat_id
         `)
         .eq('id', id)
         .single();
 
       if (error) throw error;
-      return data;
+      return data as unknown as Order;
     },
     staleTime: 1000 * 60 * 5,
   });
 
-  /** 🛡️ STATUS UPDATE PROCESS */
+  /** 🛡️ STATUS UPDATE PROCESS (Escrow & Settlement Integrated) */
   const statusMutation = useMutation({
     mutationFn: async (newStatus: string) => {
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({ status: newStatus, updated_at: new Date().toISOString() })
-        .eq('id', id);
+      // 1. If completing, use the Escrow settlement RPC
+      if (newStatus === 'completed') {
+        const { error: rpcError } = await supabase.rpc('finalize_escrow_completion', {
+          p_order_id: id
+        });
+        if (rpcError) throw rpcError;
+      } else {
+        // 2. Otherwise, update standard status
+        const { error: orderError } = await supabase
+          .from('orders')
+          .update({ status: newStatus, updated_at: new Date().toISOString() })
+          .eq('id', id);
+        if (orderError) throw orderError;
+      }
 
-      if (orderError) throw orderError;
-
-      // Automatically sync the status in the chat room
-      if (order?.conversation_id) {
-        await supabase
-          .from('conversations')
-          .update({ deal_status: newStatus })
-          .eq('id', order.conversation_id);
+      // 3. Sync status update to the chat as a system message
+      if (order?.chat_id) {
+        await supabase.from('messages').insert({
+          chat_id: order.chat_id,
+          sender_id: profile?.id,
+          content: `📦 ORDER STATUS: ${newStatus.toUpperCase()}`,
+          type: 'text', // Using text type but formatted as system info
+          is_read: false
+        });
       }
     },
     onMutate: () => {
@@ -86,17 +94,17 @@ export default function OrderDetailScreen() {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ['order-detail', id] });
       queryClient.invalidateQueries({ queryKey: ['inbox-threads'] });
-      Alert.alert("Status Updated", `Order is now ${newStatus.toUpperCase()}`);
+      Alert.alert("Success", `Order is now ${newStatus.toUpperCase()}`);
     },
-    onError: () => {
-      Alert.alert("Update Error", "Could not update the order status.");
+    onError: (err: any) => {
+      Alert.alert("Update Error", err.message || "Could not update status.");
     }
   });
 
   if (isLoading && !order) return (
     <View style={styles.centered}>
       <ActivityIndicator color={Colors.brand.emerald} size="large" />
-      <Text style={styles.loaderText}>UPDATING ORDER...</Text>
+      <Text style={[styles.loaderText, { color: theme.subtext }]}>UPDATING ORDER...</Text>
     </View>
   );
 
@@ -109,7 +117,7 @@ export default function OrderDetailScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* 📱 HEADER */}
+      {/* HEADER */}
       <View style={[styles.header, { borderBottomColor: theme.border, paddingTop: insets.top + 10 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
           <ArrowLeft color={theme.text} size={24} strokeWidth={2.5} />
@@ -120,7 +128,7 @@ export default function OrderDetailScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}>
         
-        {/* 📦 STATUS BAR */}
+        {/* STATUS BAR */}
         <View style={[styles.statusCard, { backgroundColor: theme.surface }]}>
           <View style={styles.statusRow}>
             <View style={[styles.iconCircle, { backgroundColor: Colors.brand.emerald + '15' }]}>
@@ -133,25 +141,23 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
-        {/* 🛍️ ITEMS LIST */}
+        {/* ITEMS LIST */}
         <Text style={styles.sectionLabel}>ITEMS IN THIS ORDER</Text>
-        {order.order_items.map((item: any) => (
+        {order.order_items?.map((item: any) => (
           <View key={item.id} style={[styles.productCard, { borderBottomColor: theme.border }]}>
             <Image 
-              source={item.product.image_urls[0]} 
+              source={item.product?.image_urls?.[0] || 'https://via.placeholder.com/150'} 
               style={styles.productImg} 
               contentFit="cover"
-              transition={200}
-              cachePolicy="memory-disk"
             />
             <View style={{ flex: 1, marginLeft: 15 }}>
-              <Text style={[styles.productName, { color: theme.text }]}>{item.product.name.toUpperCase()}</Text>
-              <Text style={[styles.productMeta, { color: theme.subtext }]}>QTY: {item.quantity} • ₦{item.unit_price.toLocaleString()}</Text>
+              <Text style={[styles.productName, { color: theme.text }]}>{item.product?.name?.toUpperCase()}</Text>
+              <Text style={[styles.productMeta, { color: theme.subtext }]}>QTY: {item.qty} • ₦{item.unit_price.toLocaleString()}</Text>
             </View>
           </View>
         ))}
 
-        {/* 💰 PAYMENT SUMMARY */}
+        {/* PAYMENT SUMMARY */}
         <View style={[styles.summaryBox, { backgroundColor: theme.surface }]}>
           <View style={styles.summaryRow}>
             <Text style={{ color: theme.subtext, fontWeight: '700' }}>SUBTOTAL</Text>
@@ -159,33 +165,33 @@ export default function OrderDetailScreen() {
           </View>
           {order.coin_redeemed > 0 && (
             <View style={styles.summaryRow}>
-              <Text style={{ color: Colors.brand.emerald, fontWeight: '700' }}>STORE COINS USED</Text>
+              <Text style={{ color: Colors.brand.emerald, fontWeight: '700' }}>COINS REDEEMED</Text>
               <Text style={{ color: Colors.brand.emerald, fontWeight: '900' }}>- ₦{order.coin_redeemed.toLocaleString()}</Text>
             </View>
           )}
           <View style={[styles.divider, { backgroundColor: theme.border }]} />
           <View style={styles.summaryRow}>
-            <Text style={[styles.totalLabel, { color: theme.text }]}>TOTAL PRICE</Text>
-            <Text style={[styles.totalValue, { color: theme.text }]}>₦{(order.total_amount - (order.coin_redeemed || 0)).toLocaleString()}</Text>
+            <Text style={[styles.totalLabel, { color: theme.text }]}>FINAL TOTAL</Text>
+            <Text style={[styles.totalValue, { color: theme.text }]}>₦{order.total_amount.toLocaleString()}</Text>
           </View>
         </View>
 
-        {/* 👤 BUYER/STORE DETAILS */}
+        {/* PARTNER CARD */}
         <Text style={styles.sectionLabel}>{isMerchant ? 'BUYER DETAILS' : 'STORE DETAILS'}</Text>
         <View style={[styles.contactCard, { borderColor: theme.border, backgroundColor: theme.surface }]}>
           <View style={styles.partnerHeader}>
-            <Text style={[styles.contactName, { color: theme.text }]}>{partner.display_name?.toUpperCase()}</Text>
+            <Text style={[styles.contactName, { color: theme.text }]}>{partner?.display_name?.toUpperCase() || 'MEMBER'}</Text>
             {isDiamond && !isMerchant && <Gem size={14} color="#8B5CF6" fill="#8B5CF6" />}
           </View>
           <View style={styles.contactRow}>
             <MapPin size={14} color={theme.subtext} />
-            <Text style={[styles.contactText, { color: theme.subtext }]}>@{partner.slug} • {partner.location || 'Lagos'}</Text>
+            <Text style={[styles.contactText, { color: theme.subtext }]}>@{partner?.slug || 'user'} • {partner?.location_city || 'Lagos'}</Text>
           </View>
           
           <View style={styles.actionRow}>
             <TouchableOpacity 
               style={[styles.miniBtn, { backgroundColor: theme.background, borderColor: theme.border, borderWidth: 1 }]}
-              onPress={() => Linking.openURL(`tel:${partner.phone_number}`)}
+              onPress={() => partner?.phone_number && Linking.openURL(`tel:${partner.phone_number}`)}
             >
               <Phone size={18} color={theme.text} />
               <Text style={[styles.miniBtnText, { color: theme.text }]}>Call</Text>
@@ -193,7 +199,7 @@ export default function OrderDetailScreen() {
             
             <TouchableOpacity 
               style={[styles.miniBtn, { backgroundColor: theme.text }]}
-              onPress={() => router.push(`/chat/${id}` as any)}
+              onPress={() => order.chat_id ? router.push(`/chat/${order.chat_id}` as any) : Alert.alert("No Chat Found")}
             >
               <MessageSquare size={18} color={theme.background} />
               <Text style={[styles.miniBtnText, { color: theme.background }]}>Message</Text>
@@ -201,7 +207,7 @@ export default function OrderDetailScreen() {
           </View>
         </View>
 
-        {/* ⚙️ MANAGE ORDER */}
+        {/* MANAGE ORDER CONTROLS */}
         <View style={styles.controls}>
           {currentStatus === 'pending' && isMerchant && (
             <TouchableOpacity 
@@ -235,23 +241,12 @@ export default function OrderDetailScreen() {
               <Text style={[styles.mainBtnText, { color: "#FFF" }]}>CONFIRM DELIVERY</Text>
             </TouchableOpacity>
           )}
-
-          {currentStatus === 'pending' && !isMerchant && (
-            <TouchableOpacity 
-              style={[styles.cancelBtn, { borderColor: '#EF4444' }]}
-              onPress={() => statusMutation.mutate('cancelled')}
-              disabled={statusMutation.isPending}
-            >
-              <XCircle color="#EF4444" size={20} />
-              <Text style={styles.cancelBtnText}>CANCEL ORDER</Text>
-            </TouchableOpacity>
-          )}
         </View>
 
         <View style={styles.securityNote}>
           <ShieldCheck size={14} color={theme.subtext} />
           <Text style={[styles.securityText, { color: theme.subtext }]}>
-            Secure Transaction Protected by StoreLink
+            Escrow Protection Active • Coins Released on Completion
           </Text>
         </View>
       </ScrollView>

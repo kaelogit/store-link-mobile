@@ -1,7 +1,7 @@
-import React, { useCallback, useMemo } from 'react';
+import React, { useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, RefreshControl, Alert, Platform 
+  ActivityIndicator, RefreshControl, Alert, Platform, View as RNView
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -10,6 +10,7 @@ import {
   Clock, PackageCheck, Zap, Truck, AlertCircle
 } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
+import { format } from 'date-fns';
 
 // 💎 SPEED ENGINE
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -23,7 +24,7 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🏰 ORDER HISTORY v110.0
+ * 🏰 ORDER HISTORY v111.0
  * Purpose: A high-speed list of all items the user has purchased.
  * Features: Real-time status tracking and simple confirmation for received items.
  */
@@ -44,6 +45,7 @@ export default function OrderHistoryScreen() {
     queryKey: ['my-orders', currentUser?.id],
     queryFn: async () => {
       if (!currentUser?.id) return [];
+      
       const { data, error } = await supabase
         .from('orders')
         .select(`
@@ -60,7 +62,7 @@ export default function OrderHistoryScreen() {
       if (error) throw error;
 
       // Pre-load logos for smoother scrolling
-      data?.slice(0, 10).forEach(o => {
+      data?.slice(0, 10).forEach((o: any) => {
         if (o.merchant?.logo_url) Image.prefetch(o.merchant.logo_url);
       });
 
@@ -69,22 +71,15 @@ export default function OrderHistoryScreen() {
     staleTime: 1000 * 60 * 5,
   });
 
-  /** 🛡️ ORDER COMPLETION PROCESS */
+  /** 🛡️ ORDER COMPLETION PROCESS (Financial Safe) */
   const confirmMutation = useMutation({
     mutationFn: async (orderId: string) => {
-      // 1. Update the official order status
-      const { error: orderError } = await supabase
-        .from('orders')
-        .update({ status: 'completed' })
-        .eq('id', orderId);
+      // 1. 🛡️ CRITICAL: Use RPC to ensure funds are released to seller
+      const { error: rpcError } = await supabase.rpc('finalize_escrow_completion', {
+        p_order_id: orderId
+      });
       
-      if (orderError) throw orderError;
-
-      // 2. Sync the status in the chat conversation
-      await supabase
-        .from('conversations')
-        .update({ deal_status: 'completed' })
-        .eq('order_id', orderId); 
+      if (rpcError) throw rpcError;
     },
     onMutate: () => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -92,16 +87,17 @@ export default function OrderHistoryScreen() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-orders'] });
       queryClient.invalidateQueries({ queryKey: ['order-detail'] });
+      Alert.alert("Order Completed", "Funds have been released to the seller. Thank you!");
     },
-    onError: () => {
-      Alert.alert("Error", "Could not confirm delivery. Please check your connection.");
+    onError: (err: any) => {
+      Alert.alert("Error", err.message || "Could not confirm delivery.");
     }
   });
 
   const handleConfirmReceipt = (orderId: string) => {
     Alert.alert(
       "Confirm Delivery",
-      "By clicking confirm, you agree that you have received your items. This will complete the order.",
+      "By clicking confirm, you agree that you have received your items. This will complete the order and release funds to the seller.",
       [
         { text: "Not Yet", style: "cancel" },
         { text: "YES, RECEIVED", onPress: () => confirmMutation.mutate(orderId) }
@@ -148,7 +144,7 @@ export default function OrderHistoryScreen() {
               {isDiamond && <Zap size={10} color="#8B5CF6" fill="#8B5CF6" />}
             </View>
             <Text style={[styles.orderDate, { color: theme.subtext }]}>
-              {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+              {format(new Date(item.created_at), 'MMM dd, yyyy')}
             </Text>
           </View>
           <StatusBadge status={item.status} />
@@ -226,7 +222,11 @@ export default function OrderHistoryScreen() {
         windowSize={5}
 
         ListEmptyComponent={() => {
-          if (isLoading) return null;
+          if (isLoading) return (
+            <View style={styles.empty}>
+               <ActivityIndicator color={Colors.brand.emerald} />
+            </View>
+          );
           return (
             <View style={styles.empty}>
               <Package size={48} color={theme.border} strokeWidth={1.5} />
@@ -267,7 +267,6 @@ const badgeStyles = StyleSheet.create({
 const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loaderText: { marginTop: 15, fontSize: 8, fontWeight: '900', letterSpacing: 2, opacity: 0.4 },
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 1.5 },
   headerTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
   backBtn: { width: 44, height: 44, justifyContent: 'center' },

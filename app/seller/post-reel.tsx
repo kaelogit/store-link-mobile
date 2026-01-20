@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { 
   StyleSheet, TouchableOpacity, ScrollView, 
-  TextInput, Alert, ActivityIndicator, Dimensions, Image, FlatList, Switch, Platform
+  TextInput, Alert, ActivityIndicator, Dimensions, Image, FlatList, Switch, Platform, StatusBar 
 } from 'react-native';
 
 import { useRouter } from 'expo-router';
@@ -9,16 +9,12 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { 
   ChevronLeft, X, ShoppingBag, 
   CheckCircle2, Film, Sparkles,
-  Zap, Clock, Search, Scissors, Gem
+  Zap, Clock, Search, Scissors, Gem, Play
 } from 'lucide-react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { VideoView, useVideoPlayer } from 'expo-video'; 
 import * as Haptics from 'expo-haptics';
 import { BlurView } from 'expo-blur';
-import { decode } from 'base64-arraybuffer';
-
-// 🛡️ SDK 54 STABILITY BRIDGE
-import * as FileSystem from 'expo-file-system/legacy';
 
 // App Connection
 import { supabase } from '../../src/lib/supabase';
@@ -30,9 +26,9 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 VIDEO CREATOR v81.0
- * Logic: Secure Video Upload with 12-Hour Story Sharing.
- * Visual: Premium styling with clear upload progress.
+ * 🏰 VIDEO CREATOR v83.0 (Audit Fixed)
+ * Purpose: Stable Video Upload with Algorithm-Ready Metadata.
+ * Fix: Replaced Base64 with Blob for network stability + Added Location Sync.
  */
 export default function PostReelScreen() {
   const router = useRouter();
@@ -101,7 +97,7 @@ export default function PostReelScreen() {
     }
   };
 
-  /** 🛡️ UPLOAD PROCESS */
+  /** 🛡️ HIGH-END UPLOAD PROTOCOL (Network Failure Fix) */
   const handlePost = async () => {
     if (!videoUri || !selectedProduct || !description || !profile?.id) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -109,39 +105,47 @@ export default function PostReelScreen() {
     }
 
     setLoading(true);
-    setUploadProgress(15);
+    setUploadProgress(10);
 
     try {
-      const fileName = `${profile.id}/reel_${Date.now()}.mp4`;
+      const fileExt = videoUri.split('.').pop();
+      const fileName = `${profile.id}/reel_${Date.now()}.${fileExt}`;
       
-      // Read video file
-      const base64 = await (FileSystem as any).readAsStringAsync(videoUri, { encoding: 'base64' });
-      if (!base64) throw new Error("Could not read video file");
-      setUploadProgress(45);
+      // 1. Convert URI to BLOB (Fixed: Standard base64 is too heavy for mobile networks)
+      const response = await fetch(videoUri);
+      const blob = await response.blob();
+      setUploadProgress(30);
 
-      const { error: uploadError } = await supabase.storage
+      // 2. Upload to Supabase Storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('reels') 
-        .upload(fileName, decode(base64), { 
+        .upload(fileName, blob, { 
             contentType: 'video/mp4',
-            upsert: true
+            cacheControl: '3600',
+            upsert: false
         });
 
       if (uploadError) throw uploadError;
+      
       const { data: { publicUrl } } = supabase.storage.from('reels').getPublicUrl(fileName);
-      setUploadProgress(75);
+      setUploadProgress(60);
 
-      // 1. Save video to main feed
+      // 3. Save to Feed with ALGORITHM METADATA (40/25/15 Handshake)
       const { error: dbError } = await supabase.from('reels').insert({
         seller_id: profile.id,
         video_url: publicUrl,
         product_id: selectedProduct.id,
         caption: description.trim(),
-        duration: videoDuration
+        duration: videoDuration,
+        // 🛡️ Added for Algorithmic Discovery
+        location_state: profile.location_state || 'Lagos',
+        location_city: profile.location_city || null
       });
 
       if (dbError) throw dbError;
+      setUploadProgress(85);
 
-      // 2. Share to stories
+      // 4. Mirror to Stories
       if (mirrorToStory) {
         const expiryTime = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
         await supabase.from('stories').insert({
@@ -155,10 +159,13 @@ export default function PostReelScreen() {
 
       setUploadProgress(100);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      router.replace('/(tabs)');
+      
+      // Clear cache and navigate
+      router.replace('/(tabs)/explore');
       
     } catch (e: any) {
-      Alert.alert("Post Failed", "The upload was interrupted. Please check your internet connection.");
+      console.error("Post Error:", e);
+      Alert.alert("Post Failed", "The network was interrupted. Ensure your file is under 50MB and try again.");
     } finally {
       setLoading(false);
     }
@@ -166,12 +173,13 @@ export default function PostReelScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      {/* HEADER */}
-      <View style={[styles.header, { borderBottomColor: theme.border, paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
-          <ChevronLeft color={theme.text} size={28} strokeWidth={2.5} />
+      <StatusBar barStyle={theme.text === '#000' ? "dark-content" : "light-content"} />
+      
+      <View style={[styles.header, { borderBottomColor: theme.border, paddingTop: Math.max(insets.top, 20) }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
+          <X color={theme.text} size={28} strokeWidth={2.5} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: theme.text }]}>UPLOAD VIDEO</Text>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>NEW VIDEO REEL</Text>
         <TouchableOpacity 
           onPress={handlePost} 
           disabled={loading || !selectedProduct || !videoUri}
@@ -184,12 +192,12 @@ export default function PostReelScreen() {
           {loading ? (
             <ActivityIndicator size="small" color="white" />
           ) : (
-            <Text style={[styles.deployText, { color: isDiamond ? 'white' : theme.background }]}>POST</Text>
+            <Text style={[styles.deployText, { color: isDiamond ? 'white' : theme.background }]}>SHARE</Text>
           )}
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.body, { paddingBottom: insets.bottom + 40 }]} showsVerticalScrollIndicator={false}>
         <TouchableOpacity 
           activeOpacity={0.9} 
           style={[styles.videoHero, { backgroundColor: theme.surface, borderColor: isDiamond ? '#8B5CF6' : theme.border }]} 
@@ -211,23 +219,23 @@ export default function PostReelScreen() {
             </View>
           ) : (
             <View style={{backgroundColor: 'transparent', alignItems: 'center'}}>
-              <View style={[styles.playCircle, { backgroundColor: isDiamond ? '#F5F3FF' : Colors.brand.emerald + '15' }]}>
+              <View style={[styles.playCircle, { backgroundColor: isDiamond ? '#F5F3FF' : `${Colors.brand.emerald}15` }]}>
                 {isDiamond ? <Sparkles color="#8B5CF6" size={32} /> : <Film color={Colors.brand.emerald} size={32} />}
               </View>
-              <Text style={[styles.placeholderTitle, { color: theme.text }]}>Upload a Short Video</Text>
-              <Text style={[styles.placeholderSub, { color: theme.subtext }]}>Vertical format (Max 60 seconds)</Text>
+              <Text style={[styles.placeholderTitle, { color: theme.text }]}>Select Brand Video</Text>
+              <Text style={[styles.placeholderSub, { color: theme.subtext }]}>Best for discovery (Max 60s)</Text>
             </View>
           )}
         </TouchableOpacity>
 
         <View style={styles.sectionHeader}>
             {isDiamond ? <Gem size={14} color="#8B5CF6" fill="#8B5CF6" /> : <Zap size={14} color={Colors.brand.emerald} fill={Colors.brand.emerald} />}
-            <Text style={[styles.sectionLabel, { color: theme.subtext }]}>TAG A PRODUCT *</Text>
+            <Text style={[styles.sectionLabel, { color: theme.subtext }]}>TAG YOUR PRODUCT</Text>
         </View>
 
         {selectedProduct ? (
           <View style={[styles.selectedCard, { backgroundColor: theme.surface, borderColor: isDiamond ? '#8B5CF6' : Colors.brand.emerald }]}>
-            <Image source={{ uri: selectedProduct.image_urls[0] }} style={styles.selectedImg} />
+            <Image source={{ uri: selectedProduct.image_urls?.[0] }} style={styles.selectedImg} />
             <View style={{flex: 1, marginLeft: 15, backgroundColor: 'transparent'}}>
               <Text style={[styles.selectedName, { color: theme.text }]}>{selectedProduct.name.toUpperCase()}</Text>
               <Text style={[styles.selectedPrice, { color: isDiamond ? '#8B5CF6' : Colors.brand.emerald }]}>₦{selectedProduct.price.toLocaleString()}</Text>
@@ -239,19 +247,20 @@ export default function PostReelScreen() {
         ) : (
           <TouchableOpacity style={[styles.tagBtn, { backgroundColor: theme.surface, borderColor: theme.border }]} onPress={() => setShowProductPicker(true)}>
             <ShoppingBag color={theme.text} size={20} />
-            <Text style={[styles.tagBtnText, { color: theme.subtext }]}>Select an item to link...</Text>
+            <Text style={[styles.tagBtnText, { color: theme.subtext }]}>Choose an item to link...</Text>
           </TouchableOpacity>
         )}
 
         <View style={styles.form}>
-            <Text style={[styles.sectionLabel, { marginTop: 30, marginBottom: 12 }]}>POST CAPTION</Text>
+            <Text style={[styles.sectionLabel, { marginTop: 30, marginBottom: 12 }]}>WRITE CAPTION</Text>
             <TextInput 
-              placeholder="Tell people about this item..." 
+              placeholder="Give your reel a catching description..." 
               placeholderTextColor={`${theme.subtext}80`}
               style={[styles.captionInput, { backgroundColor: theme.surface, color: theme.text, borderColor: theme.border }]} 
               multiline 
               value={description}
               onChangeText={setDescription}
+              textAlignVertical="top"
             />
         </View>
 
@@ -261,7 +270,7 @@ export default function PostReelScreen() {
                   <Sparkles size={16} color={isDiamond ? '#8B5CF6' : Colors.brand.emerald} />
                   <Text style={[styles.mirrorTitle, { color: theme.text }]}>SHARE TO STORIES</Text>
               </View>
-              <Text style={[styles.mirrorSub, { color: theme.subtext }]}>Reach more people by automatically sharing this video to your story for 12 hours.</Text>
+              <Text style={[styles.mirrorSub, { color: theme.subtext }]}>Boost visibility by automatically dropping this into your 12-hour story feed.</Text>
             </View>
             <Switch 
               value={mirrorToStory} 
@@ -272,14 +281,14 @@ export default function PostReelScreen() {
         </View>
       </ScrollView>
 
-      {/* 🛡️ PRODUCT SELECTOR */}
+      {/* 🛡️ PRODUCT SELECTOR MODAL */}
       {showProductPicker && (
         <View style={[styles.pickerOverlay, { backgroundColor: theme.background }]}>
-          <View style={[styles.pickerHeader, { borderBottomColor: theme.border, paddingTop: insets.top + 10 }]}>
+          <View style={[styles.pickerHeader, { borderBottomColor: theme.border, paddingTop: Math.max(insets.top, 20) }]}>
             <View style={[styles.searchBar, { backgroundColor: theme.surface }]}>
               <Search size={18} color={theme.subtext} />
               <TextInput 
-                placeholder="Search your items..." 
+                placeholder="Search catalog..." 
                 placeholderTextColor={theme.subtext}
                 style={[styles.searchInput, { color: theme.text }]}
                 value={catalogSearch}
@@ -305,7 +314,7 @@ export default function PostReelScreen() {
                   setShowProductPicker(false);
                 }}
               >
-                <Image source={{ uri: item.image_urls[0] }} style={styles.pickerImg} />
+                <Image source={{ uri: item.image_urls?.[0] }} style={styles.pickerImg} />
                 <View style={{flex: 1, marginLeft: 15, backgroundColor: 'transparent'}}>
                   <Text style={[styles.pickerName, { color: theme.text }]}>{item.name.toUpperCase()}</Text>
                   <Text style={[styles.pickerPrice, { color: isDiamond ? '#8B5CF6' : Colors.brand.emerald }]}>₦{item.price.toLocaleString()}</Text>
@@ -313,17 +322,17 @@ export default function PostReelScreen() {
                 <CheckCircle2 color={isDiamond ? '#8B5CF6' : Colors.brand.emerald} size={22} fill={isDiamond ? '#F5F3FF' : 'transparent'} />
               </TouchableOpacity>
             )}
-            ListEmptyComponent={<Text style={{ textAlign: 'center', color: theme.subtext, marginTop: 50, fontWeight: '700' }}>No products found.</Text>}
+            ListEmptyComponent={<Text style={{ textAlign: 'center', color: theme.subtext, marginTop: 50, fontWeight: '700' }}>No products available.</Text>}
           />
         </View>
       )}
 
-      {/* 🛡️ UPLOAD STATUS */}
+      {/* 🛡️ UPLOAD PROGRESS MODAL */}
       {loading && (
         <View style={styles.loadingOverlay}>
           <BlurView intensity={90} tint={colorScheme === 'dark' ? 'dark' : 'light'} style={styles.loadingCard}>
             <ActivityIndicator size="large" color={isDiamond ? '#8B5CF6' : Colors.brand.emerald} />
-            <Text style={[styles.loadingText, { color: theme.text }]}>UPLOADING VIDEO... {uploadProgress}%</Text>
+            <Text style={[styles.loadingText, { color: theme.text }]}>PREPARING REEL... {uploadProgress}%</Text>
             <View style={[styles.progressBar, { backgroundColor: theme.border }]}>
                 <View style={[styles.progressFill, { width: `${uploadProgress}%`, backgroundColor: isDiamond ? '#8B5CF6' : Colors.brand.emerald }]} />
             </View>
@@ -339,11 +348,11 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 1 },
   headerTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
   backBtn: { width: 44, height: 44, justifyContent: 'center' },
-  deployBtn: { paddingHorizontal: 25, paddingVertical: 12, borderRadius: 16, elevation: 4 },
+  deployBtn: { paddingHorizontal: 22, paddingVertical: 10, borderRadius: 14, elevation: 2 },
   deployDisabled: { opacity: 0.1 },
-  deployText: { fontWeight: '900', fontSize: 12, letterSpacing: 1 },
-  body: { padding: 25, paddingBottom: 100 },
-  videoHero: { width: '100%', height: 480, borderRadius: 36, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', borderWidth: 2 },
+  deployText: { fontWeight: '900', fontSize: 11, letterSpacing: 1 },
+  body: { padding: 25 },
+  videoHero: { width: '100%', height: 480, borderRadius: 40, overflow: 'hidden', justifyContent: 'center', alignItems: 'center', borderWidth: 2 },
   previewContainer: { flex: 1, width: '100%' },
   previewOverlay: { position: 'absolute', top: 20, left: 20, right: 20, flexDirection: 'row', justifyContent: 'space-between' },
   durationBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 14, overflow: 'hidden' },
@@ -363,7 +372,7 @@ const styles = StyleSheet.create({
   selectedPrice: { fontSize: 14, fontWeight: '800', marginTop: 3 },
   removeBtn: { width: 38, height: 38, borderRadius: 14, backgroundColor: '#FEF2F2', justifyContent: 'center', alignItems: 'center' },
   form: { marginTop: 10 },
-  captionInput: { borderRadius: 28, padding: 25, height: 140, textAlignVertical: 'top', fontSize: 16, fontWeight: '600', borderWidth: 1.5 },
+  captionInput: { borderRadius: 28, padding: 25, height: 140, fontSize: 16, fontWeight: '600', borderWidth: 1.5 },
   mirrorCard: { flexDirection: 'row', alignItems: 'center', padding: 24, borderRadius: 32, marginTop: 40, borderWidth: 1.5 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   mirrorTitle: { fontSize: 14, fontWeight: '900', letterSpacing: -0.2 },

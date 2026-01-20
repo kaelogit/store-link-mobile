@@ -1,8 +1,7 @@
-import React, { useState, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useRef } from 'react';
 import { 
   StyleSheet, ScrollView, TouchableOpacity, 
-  ActivityIndicator, Alert, Linking, Platform, 
-  Dimensions, Share, FlatList, ViewToken
+  ActivityIndicator, Dimensions, Share, FlatList, Platform
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -30,16 +29,17 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 PRODUCT DETAIL v101.0
+ * 🏰 PRODUCT DETAIL v102.0
  * Purpose: A high-performance view for inspecting products and viewing store details.
  * Logic: Synchronizes product data, linked videos, and other items from the same store.
- * Visual: High-fidelity image gallery with premium store indicators.
+ * Fix: Corrected Reel Linking & Navigation Safety.
  */
 export default function ProductDetailScreen() {
   const { id } = useLocalSearchParams();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const theme = Colors[useColorScheme() ?? 'light'];
+  const colorScheme = useColorScheme();
   const queryClient = useQueryClient();
   
   const { addToCart } = useCartStore();
@@ -52,6 +52,7 @@ export default function ProductDetailScreen() {
   const { data: product, isLoading: prodLoading } = useQuery({
     queryKey: ['product-detail', id],
     queryFn: async () => {
+      if (!id) throw new Error("No ID");
       const { data, error } = await supabase
         .from('products')
         .select(`*, seller:seller_id (*)`)
@@ -60,10 +61,13 @@ export default function ProductDetailScreen() {
       if (error) throw error;
       
       // Prepare images for instant viewing
-      data.image_urls.forEach((url: string) => Image.prefetch(url));
+      if (data.image_urls) {
+        data.image_urls.forEach((url: string) => Image.prefetch(url));
+      }
       return data;
     },
     staleTime: 1000 * 60 * 10,
+    enabled: !!id,
   });
 
   /** 🛡️ VIDEO SYNC: Finding related videos */
@@ -79,7 +83,6 @@ export default function ProductDetailScreen() {
     },
     enabled: !!product,
   });
-  const colorScheme = useColorScheme();
 
   /** 🛡️ STOREFRONT SYNC: Loading more items from this seller */
   const { data: moreFromStore = [] } = useQuery({
@@ -130,7 +133,7 @@ export default function ProductDetailScreen() {
     } catch (e) {}
   };
 
-  if (prodLoading && !product) return (
+  if (prodLoading || !product) return (
     <View style={styles.centered}><ActivityIndicator color={Colors.brand.emerald} size="large" /></View>
   );
 
@@ -182,7 +185,7 @@ export default function ProductDetailScreen() {
         <View style={styles.mainInfo}>
           {/* 🏛️ STORE DETAILS */}
           <View style={styles.vendorHeader}>
-            <TouchableOpacity style={styles.vendorCard} onPress={() => router.push(`/profile/${seller?.id}`)}>
+            <TouchableOpacity style={styles.vendorCard} onPress={() => router.push(`/profile/${seller?.id}` as any)}>
               <View style={[styles.avatarFrame, isDiamond && styles.diamondHalo]}>
                 <Image source={seller?.logo_url} style={styles.storeLogo} contentFit="cover" transition={200} />
               </View>
@@ -208,7 +211,8 @@ export default function ProductDetailScreen() {
             <TouchableOpacity 
               activeOpacity={0.9}
               style={[styles.reelCard, { borderColor: isDiamond ? '#8B5CF6' : theme.border }]}
-              onPress={() => router.push(`/(tabs)/explore`)}
+              // 🛠️ FIXED: Link to the specific story viewer, not just explore feed
+              onPress={() => router.push(`/story-viewer/${linkedReel.id}` as any)}
             >
               <BlurView intensity={30} tint="dark" style={styles.reelBlur}>
                 <View style={styles.reelContent}>
@@ -217,8 +221,8 @@ export default function ProductDetailScreen() {
                   </View>
                   <View style={{flex: 1}}>
                     <View style={styles.row}>
-                       <Sparkles size={12} color="#A78BFA" fill="#A78BFA" />
-                       <Text style={styles.reelTitle}>WATCH PRODUCT VIDEO</Text>
+                        <Sparkles size={12} color="#A78BFA" fill="#A78BFA" />
+                        <Text style={styles.reelTitle}>WATCH PRODUCT VIDEO</Text>
                     </View>
                     <Text style={styles.reelSub}>See this item in action</Text>
                   </View>
@@ -302,7 +306,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   headerNav: { position: 'absolute', top: 0, width: '100%', zIndex: 10, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 20 },
-  circleBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', elevation: 4 },
+  circleBtn: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
   galleryContainer: { width: width, height: width * 1.25 }, 
   heroImg: { width: width, height: '100%' },
   pagination: { position: 'absolute', bottom: 25, width: '100%', flexDirection: 'row', justifyContent: 'center', gap: 6 },

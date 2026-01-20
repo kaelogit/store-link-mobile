@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   StyleSheet, TextInput, TouchableOpacity, 
-  ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform 
+  ActivityIndicator, Alert, Animated, KeyboardAvoidingView, Platform, Keyboard 
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { supabase } from '../../src/lib/supabase';
 import { ArrowLeft, KeyRound, Mail, Send, ShieldCheck } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -17,12 +18,13 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🔐 FORGOT PASSWORD SCREEN v73.0
+ * 🔐 FORGOT PASSWORD SCREEN v74.0
  * Purpose: Allows users to reset their password via email verification.
  * Language: Simple English for a stress-free recovery process.
  */
 export default function ForgotPasswordScreen() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const theme = Colors[useColorScheme() ?? 'light'];
   
   const [email, setEmail] = useState('');
@@ -62,7 +64,7 @@ export default function ForgotPasswordScreen() {
 
       if (dbError) throw dbError;
 
-      // 4. Send the reset email
+      // 4. Send the reset email (Custom API)
       const response = await fetch("https://storelink.ng/api/send-email", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -78,6 +80,7 @@ export default function ForgotPasswordScreen() {
       return cleanEmail;
     },
     onMutate: () => {
+      Keyboard.dismiss();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     },
     onSuccess: (cleanEmail) => {
@@ -100,8 +103,12 @@ export default function ForgotPasswordScreen() {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
         style={{ flex: 1 }}
       >
-        {/* BACK NAVIGATION */}
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        {/* BACK NAVIGATION (Safe Area Aware) */}
+        <TouchableOpacity 
+          onPress={() => router.back()} 
+          style={[styles.backBtn, { marginTop: insets.top + 10 }]}
+          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+        >
           <ArrowLeft color={theme.text} size={28} strokeWidth={2.5} />
         </TouchableOpacity>
 
@@ -109,7 +116,7 @@ export default function ForgotPasswordScreen() {
           
           <View style={styles.header}>
             <View style={[styles.iconCircle, { backgroundColor: theme.surface }]}>
-              <KeyRound size={36} color={Colors.brand.gold} strokeWidth={2.5} />
+              <KeyRound size={36} color={Colors.brand.emerald} strokeWidth={2.5} />
             </View>
             <Text style={[styles.title, { color: theme.text }]}>Forgot{"\n"}Password?</Text>
             <Text style={[styles.subtext, { color: theme.subtext }]}>
@@ -129,7 +136,7 @@ export default function ForgotPasswordScreen() {
                   onChangeText={setEmail}
                   autoCapitalize="none"
                   keyboardType="email-address"
-                  selectionColor={Colors.brand.gold}
+                  selectionColor={Colors.brand.emerald}
                 />
               </View>
           </View>
@@ -169,7 +176,7 @@ export default function ForgotPasswordScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  backBtn: { paddingHorizontal: 25, paddingTop: 60, paddingBottom: 10 },
+  backBtn: { paddingHorizontal: 25, paddingBottom: 10 },
   content: { flex: 1, paddingHorizontal: 30, paddingTop: 10 },
   header: { marginBottom: 40 },
   iconCircle: { 

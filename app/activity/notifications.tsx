@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, RefreshControl, ScrollView, Platform, Dimensions 
+  ActivityIndicator, RefreshControl, ScrollView, Platform, Dimensions, StatusBar 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -25,7 +25,7 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 NOTIFICATIONS v96.0
+ * 🏰 NOTIFICATIONS v97.0
  * Purpose: A central hub for important account alerts and system updates.
  * Logic: Uses smart caching to load instantly and updates status when a message is opened.
  * Visual: High-fidelity details for important alerts and helpful icons for categories.
@@ -103,8 +103,10 @@ export default function NotificationsScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.text === '#000' ? "dark-content" : "light-content"} />
+      
       {/* 📱 HEADER */}
-      <View style={[styles.header, { borderBottomColor: theme.surface, paddingTop: insets.top + 10 }]}>
+      <View style={[styles.header, { borderBottomColor: theme.surface, paddingTop: Math.max(insets.top, 20) }]}>
         {selectedNote ? (
           <TouchableOpacity onPress={() => setSelectedNote(null)} style={styles.backBtn}>
             <ArrowLeft color={theme.text} size={28} strokeWidth={2.5} />
@@ -150,7 +152,7 @@ export default function NotificationsScreen() {
               activeOpacity={0.7}
               style={[
                 styles.noteRow, 
-                !item.is_read && { backgroundColor: theme.surface + '80' }, 
+                !item.is_read && { backgroundColor: `${theme.surface}80` }, 
                 { borderBottomColor: theme.surface }
               ]} 
               onPress={() => handleOpenNote(item)}
@@ -170,7 +172,7 @@ export default function NotificationsScreen() {
                     {item.title.toUpperCase()}
                   </Text>
                   <Text style={[styles.noteTime, { color: theme.subtext }]}>
-                    {new Date(item.created_at).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                    {new Date(item.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                   </Text>
                 </View>
                 <Text style={[styles.noteSnippet, { color: theme.subtext }, !item.is_read && { color: theme.text, fontWeight: '600' }]} numberOfLines={1}>
@@ -188,7 +190,7 @@ export default function NotificationsScreen() {
             <View style={styles.detailMeta}>
               <Clock size={12} color={theme.subtext} strokeWidth={3} />
               <Text style={[styles.detailTime, { color: theme.subtext }]}>
-                {new Date(selectedNote.created_at).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }).toUpperCase()}
+                {new Date(selectedNote.created_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }).toUpperCase()}
               </Text>
             </View>
             
@@ -214,13 +216,16 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loaderText: { marginTop: 15, fontSize: 8, fontWeight: '900', letterSpacing: 2, opacity: 0.4 },
+  
   header: { paddingHorizontal: 25, paddingBottom: 20, borderBottomWidth: 1.5 },
   inboxHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'transparent' },
   title: { fontSize: 13, fontWeight: '900', letterSpacing: 2 },
   subtitle: { fontSize: 10, fontWeight: '800', marginTop: 4, opacity: 0.5 },
   supportCircle: { width: 50, height: 50, borderRadius: 16, justifyContent: 'center', alignItems: 'center' },
+  
   backBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'transparent' },
   backText: { fontSize: 11, fontWeight: '900', letterSpacing: 1.5 },
+  
   list: { paddingBottom: 60 },
   noteRow: { flexDirection: 'row', alignItems: 'center', padding: 22, borderBottomWidth: 1.5, gap: 15 },
   iconCircle: { width: 48, height: 48, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
@@ -230,9 +235,11 @@ const styles = StyleSheet.create({
   noteTime: { fontSize: 9, fontWeight: '900', opacity: 0.5 },
   noteSnippet: { fontSize: 13, fontWeight: '500' },
   unreadDot: { width: 8, height: 8, borderRadius: 4, marginRight: 5 },
+  
   emptyContainer: { flex: 1, alignItems: 'center', marginTop: 140, gap: 20, backgroundColor: 'transparent' },
   emptyIconCircle: { width: 80, height: 80, borderRadius: 32, justifyContent: 'center', alignItems: 'center', borderWidth: 1.5 },
   emptyText: { fontSize: 9, fontWeight: '900', letterSpacing: 2.5, opacity: 0.5 },
+  
   detailContainer: { padding: 25 },
   detailCard: { borderRadius: 32, padding: 30, borderWidth: 1.5 },
   detailMeta: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 20, backgroundColor: 'transparent' },
@@ -240,6 +247,7 @@ const styles = StyleSheet.create({
   detailTitle: { fontSize: 24, fontWeight: '900', letterSpacing: -0.8, lineHeight: 32 },
   detailDivider: { height: 1.5, marginVertical: 30 },
   detailMessage: { fontSize: 16, lineHeight: 28, fontWeight: '500', opacity: 0.9 },
+  
   supportBtn: { height: 70, borderRadius: 24, marginTop: 35, flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 12, elevation: 4 },
   supportBtnText: { fontWeight: '900', fontSize: 12, letterSpacing: 1.5 }
 });

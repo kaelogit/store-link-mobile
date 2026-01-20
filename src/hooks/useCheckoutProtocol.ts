@@ -13,10 +13,10 @@ interface SellerMinimal {
 }
 
 /**
- * 🛒 CHECKOUT PROCESS v91.0
- * Purpose: A secure hook to finalize orders within the app.
- * Logic: Handles database order creation and coin wallet deduction in a single flow.
- * Features: Instant UI updates and hardware haptic feedback.
+ * 🛒 CHECKOUT PROCESS v94.0
+ * Purpose: Secure transaction and chat anchoring.
+ * Handshake: Profiles + Orders + Chats are now unified.
+ * Update: Standardized 'content' field and added 'channel' param.
  */
 export const useCheckoutProtocol = () => {
   const queryClient = useQueryClient();
@@ -24,26 +24,39 @@ export const useCheckoutProtocol = () => {
   const { removeFromCart, useCoins } = useCartStore();
 
   const checkoutMutation = useMutation({
-    mutationFn: async ({ seller, items, deliveryAddress }: { 
+    mutationFn: async ({ seller, items, deliveryAddress, channel }: { 
       seller: SellerMinimal, 
       items: any[], 
       deliveryAddress: string, 
-      channel: 'CHAT' 
+      channel?: string // <--- Added to fix TS Error in Checkout/CartSheet
     }) => {
       
-      // 1. CALCULATION: Apply discounts and determine final price
+      // 1. CHAT ANCHORING: Find or create the conversation thread
+      const { data: chat, error: chatError } = await supabase
+        .from('chats')
+        .upsert({ 
+          buyer_id: currentUser?.id, 
+          seller_id: seller.id,
+          updated_at: new Date().toISOString() 
+        }, { onConflict: 'buyer_id,seller_id' })
+        .select()
+        .single();
+
+      if (chatError) throw new Error("Connection failed: Could not open secure chat channel.");
+
+      // 2. PRICE CALCULATION
       const storeSubtotal = items.reduce((sum, i) => sum + (i.product.price * (i.qty || 1)), 0);
       const coinsToApply = useCoins ? Math.min(currentUser?.coin_balance || 0, Math.floor(storeSubtotal * 0.05)) : 0;
       const finalPayable = storeSubtotal - coinsToApply;
 
-      // 2. SAVE ORDER: Creates the order and individual items in the database
-      // Note: 'create_pure_order' is a secure database function handling multiple tables.
+      // 3. ATOMIC ORDER CREATION: Linking everything to the chat_id
       const { data: orderId, error: orderError } = await supabase.rpc('create_pure_order', {
         p_seller_id: seller.id,
         p_user_id: currentUser?.id,
         p_total_amount: finalPayable,
         p_coin_redeemed: coinsToApply,
         p_delivery_address: deliveryAddress,
+        p_chat_id: chat.id, // THE WIRE
         p_order_items: items.map(i => ({
           product_id: i.product.id,
           quantity: i.qty || 1,
@@ -53,7 +66,7 @@ export const useCheckoutProtocol = () => {
 
       if (orderError) throw orderError;
 
-      // 3. UPDATE WALLET: Deduct coins from the user's balance if applied
+      // 4. WALLET SETTLEMENT (Deduct Coins)
       if (coinsToApply > 0 && currentUser?.id) {
         const { error: coinError } = await supabase.rpc('process_marketplace_checkout', {
           p_user_id: currentUser.id,
@@ -62,9 +75,19 @@ export const useCheckoutProtocol = () => {
         if (coinError) throw coinError;
       }
 
-      // Return clean data for the UI success states
+      // 5. SYSTEM MESSAGE: Post receipt to the chat
+      // 🛠️ FIXED: Changed 'text' to 'content' to match chat/[chatId].tsx
+      await supabase.from('messages').insert({
+        chat_id: chat.id,
+        sender_id: currentUser?.id,
+        content: `🛍️ NEW ORDER PLACED: #${orderId.slice(0,8).toUpperCase()}\nTotal: ₦${finalPayable.toLocaleString()}`,
+        type: 'text', // Using 'text' type but formatted as system info
+        is_read: false
+      });
+
       return { 
         orderId, 
+        chatId: chat.id,
         storeName: seller.display_name, 
         total: finalPayable, 
         discount: coinsToApply 
@@ -72,24 +95,21 @@ export const useCheckoutProtocol = () => {
     },
 
     onMutate: async (variables) => {
-      // 🏎️ Instant UI Updates: Clear local data immediately for a fast feel
-      await queryClient.cancelQueries({ queryKey: ['user-profile'] });
-      
-      // Remove items from the cart state before the network request finishes
+      // Clear cart items instantly for a fast feel
       variables.items.forEach(i => removeFromCart(i.product.id));
-      
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     },
 
     onSuccess: async () => {
-      // Refresh user and order data in the background
+      // Refresh all related data caches
       queryClient.invalidateQueries({ queryKey: ['my-orders'] });
       queryClient.invalidateQueries({ queryKey: ['user-profile'] });
+      queryClient.invalidateQueries({ queryKey: ['inbox-threads'] });
       await refreshUserData();
     },
 
     onError: (err: any) => {
-      Alert.alert("Order Failed", err.message || "We couldn't process your order. Please check your connection.");
+      Alert.alert("Checkout Error", err.message || "Something went wrong.");
     }
   });
 

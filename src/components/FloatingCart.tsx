@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, memo } from 'react';
-import { TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
+import React, { useEffect, useRef, useState, memo } from 'react';
+import { TouchableOpacity, StyleSheet, Animated, Platform, View as RNView } from 'react-native';
 import { ShoppingBag } from 'lucide-react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Haptics from 'expo-haptics';
@@ -7,8 +7,6 @@ import * as Haptics from 'expo-haptics';
 // App Connection
 import { useCartStore } from '../store/useCartStore';
 import { useUserStore } from '../store/useUserStore';
-import { useModeStore } from '../store/useModeStore';
-
 // App Components
 import { View, Text } from './Themed';
 import Colors from '../constants/Colors';
@@ -19,9 +17,10 @@ interface FloatingCartProps {
 }
 
 /**
- * 🏰 FLOATING CART v85.0
+ * 🛒 FLOATING CART v87.0
  * Purpose: A persistent, floating checkout button that appears when items are added.
  * Features: Tactile haptic feedback, spring animations, and automatic safe-area positioning.
+ * Logic: Auto-hides when user is in Seller mode or cart is empty.
  */
 export const FloatingCart = memo(({ onPress }: FloatingCartProps) => {
   const insets = useSafeAreaInsets();
@@ -29,17 +28,20 @@ export const FloatingCart = memo(({ onPress }: FloatingCartProps) => {
   
   const { getCartTotals } = useCartStore();
   const { profile } = useUserStore();
-  const { mode } = useModeStore();
   
+  // 🛡️ High-End logic sync
   const { cartCount } = getCartTotals(profile?.coin_balance || 0);
   const scaleAnim = useRef(new Animated.Value(0)).current;
+  const [isVisible, setIsVisible] = useState(false);
 
   // DISPLAY LOGIC: Only show to buyers when the cart has items
-  const isMerchantMode = mode === 'SELLER';
+  // Updated 'mode' reference to 'profile?.view_as' to match store schema
+  const isMerchantMode = profile?.view_as === 'seller';
   const shouldBeVisible = cartCount > 0 && !isMerchantMode;
 
   useEffect(() => {
     if (shouldBeVisible) {
+      setIsVisible(true);
       // 🏎️ SPRING ANIMATION: High-tension entrance for a premium feel
       Animated.spring(scaleAnim, {
         toValue: 1,
@@ -52,7 +54,9 @@ export const FloatingCart = memo(({ onPress }: FloatingCartProps) => {
         toValue: 0,
         duration: 250,
         useNativeDriver: true,
-      }).start();
+      }).start(({ finished }) => {
+        if (finished) setIsVisible(false);
+      });
     }
   }, [shouldBeVisible]);
 
@@ -64,8 +68,7 @@ export const FloatingCart = memo(({ onPress }: FloatingCartProps) => {
     ? (insets.bottom > 0 ? insets.bottom + 80 : 95) 
     : (insets.bottom > 0 ? insets.bottom + 75 : 90);
 
-  // Prevent rendering if not visible and scale is reset
-  if (!shouldBeVisible && (scaleAnim as any)._value === 0) return null;
+  if (!isVisible && !shouldBeVisible) return null;
 
   return (
     <Animated.View 
@@ -96,9 +99,9 @@ export const FloatingCart = memo(({ onPress }: FloatingCartProps) => {
         <ShoppingBag color={theme.background} size={26} strokeWidth={2.8} />
         
         {/* 🛍️ CART BADGE */}
-        <View style={[styles.badge, { backgroundColor: Colors.brand.emerald, borderColor: theme.background }]}>
+        <RNView style={[styles.badge, { backgroundColor: Colors.brand.emerald, borderColor: theme.background }]}>
           <Text style={[styles.badgeText, { color: '#FFFFFF' }]}>{cartCount}</Text>
-        </View>
+        </RNView>
       </TouchableOpacity>
     </Animated.View>
   );
@@ -130,11 +133,11 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute',
-    top: -5,
-    right: -5,
-    minWidth: 26,
-    height: 26,
-    borderRadius: 13,
+    top: -6,
+    right: -6,
+    minWidth: 28,
+    height: 28,
+    borderRadius: 14,
     paddingHorizontal: 6,
     justifyContent: 'center',
     alignItems: 'center',
@@ -142,8 +145,10 @@ const styles = StyleSheet.create({
     elevation: 4,
   },
   badgeText: {
-    fontSize: 10,
+    fontSize: 11,
     fontWeight: '900',
     letterSpacing: -0.5,
+    textAlign: 'center',
+    backgroundColor: 'transparent'
   },
 });

@@ -1,9 +1,10 @@
+import React from 'react';
 import { ScrollViewStyleReset } from 'expo-router/html';
 
 /**
- * 🏰 WEB ROOT CONFIGURATION (Pure Build)
- * This file configures the root HTML for web-based static rendering.
- * It ensures theme consistency and prevents background flickering.
+ * 🏰 WEB ROOT CONFIGURATION (Web Only)
+ * Note: This file is ONLY used for the web version (PWA/Site).
+ * It is completely ignored by the Android and iOS compilers.
  */
 export default function Root({ children }: { children: React.ReactNode }) {
   return (
@@ -13,7 +14,7 @@ export default function Root({ children }: { children: React.ReactNode }) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
 
-        {/* Standardizes scrolling behavior on web to match the native mobile experience. 
+        {/* Standardizes scrolling behavior on web to match the native mobile experience.
           This ensures our ScrollView components behave consistently across all platforms.
         */}
         <ScrollViewStyleReset />
@@ -31,6 +32,11 @@ export default function Root({ children }: { children: React.ReactNode }) {
 const responsiveBackground = `
 body {
   background-color: #ffffff;
+  /* 🛡️ Native Feel: Disables text selection and blue tap highlights on mobile web */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 @media (prefers-color-scheme: dark) {
   body {

@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { StatusBar, Platform } from 'react-native';
+import { useEffect, useState, useRef } from 'react';
+import { StatusBar, Platform, View as RNView, ActivityIndicator, StyleSheet } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
@@ -8,20 +8,24 @@ import { Stack, useRouter, useSegments } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import * as NavigationBar from 'expo-navigation-bar'; 
 import * as Notifications from 'expo-notifications';
+import Constants from 'expo-constants'; // 🛡️ Added for environment detection
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import 'react-native-reanimated';
 
 // 💎 DIAMOND SPEED ENGINE
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 
 // App Ecosystem
 import { supabase } from '../src/lib/supabase';
 import { useColorScheme } from '../src/components/useColorScheme';
 import { FloatingCart } from '../src/components/FloatingCart';
+import { CartSheet } from '../src/components/CartSheet';
 import { useUserStore } from '../src/store/useUserStore';
 import { usePushNotifications } from '../src/hooks/usePushNotifications'; 
-import { useHeartbeat } from '../src/hooks/useHeartbeat'; // 🛡️ NEW: Activity Heartbeat
+import { useHeartbeat } from '../src/hooks/useHeartbeat'; 
 import Colors from '../src/constants/Colors';
+
 export { ErrorBoundary } from 'expo-router';
 
 // Cache Configuration
@@ -65,7 +69,9 @@ export default function RootLayout() {
     <QueryClientProvider client={queryClient}>
       <SafeAreaProvider>
         <GestureHandlerRootView style={{ flex: 1 }}>
-          <RootLayoutNav />
+          <BottomSheetModalProvider>
+            <RootLayoutNav />
+          </BottomSheetModalProvider>
         </GestureHandlerRootView>
       </SafeAreaProvider>
     </QueryClientProvider>
@@ -76,12 +82,13 @@ function RootLayoutNav() {
   const colorScheme = useColorScheme();
   const segments = useSegments();
   const router = useRouter();
+  const cartSheetRef = useRef<any>(null);
   
   const [isAuthReady, setIsAuthReady] = useState(false);
-  const { refreshUserData, clearUser, profile } = useUserStore();
+  const { refreshUserData, clearUser } = useUserStore();
   const { registerForPushNotificationsAsync } = usePushNotifications(); 
   
-  // 🛡️ HEARTBEAT: Silently keeps the user's "Online" status alive
+  // 🛡️ HEARTBEAT
   useHeartbeat();
 
   /** 🛡️ NOTIFICATION DEEP LINKING */
@@ -95,6 +102,8 @@ function RootLayoutNav() {
         router.push(`/product/${data.productId}`);
       } else if (data.chatId) {
         router.push(`/chat/${data.chatId}`);
+      } else if (data.url) {
+        router.push(data.url as any);
       }
     });
 
@@ -118,13 +127,11 @@ function RootLayoutNav() {
       if (!currentSegments || currentSegments.length === 0) return;
       const rootSegment = currentSegments[0];
 
-      // 1. If not logged in, force to login screen
       if (!session) {
         if (rootSegment !== 'auth') router.replace('/auth/login');
         return;
       }
 
-      // 2. Load Profile into Global Store
       if (!useUserStore.getState().profile) {
         await refreshUserData();
       }
@@ -132,10 +139,14 @@ function RootLayoutNav() {
       const finalProfile = useUserStore.getState().profile;
       if (!finalProfile) return;
 
-      // 3. Register for Push Notifications once Profile is loaded
-      registerForPushNotificationsAsync(finalProfile.id);
+      // 🛡️ NOTIFICATION SHIELD: Prevents registration inside standard Expo Go on Android
+      const isExpoGoOnAndroid = Platform.OS === 'android' && Constants.appOwnership === 'expo';
+      if (!isExpoGoOnAndroid) {
+        registerForPushNotificationsAsync(finalProfile.id);
+      } else {
+        console.log("🛡️ Push registration skipped: App is running in Expo Go on Android.");
+      }
 
-      // 4. Verification Check
       if (!finalProfile.is_verified) {
         if (!currentSegments.includes('verify')) {
           router.replace({ 
@@ -146,13 +157,11 @@ function RootLayoutNav() {
         return;
       } 
 
-      // 5. Onboarding Check
       if (!finalProfile.onboarding_completed) {
         if (rootSegment !== 'onboarding') router.replace('/onboarding/role-setup');
         return;
       } 
 
-      // 6. Final Redirect: Prevent logged-in users from hitting Login/Onboarding
       const restrictedZones = ['auth', 'onboarding'];
       if (restrictedZones.includes(rootSegment)) {
         router.replace('/(tabs)');
@@ -187,7 +196,16 @@ function RootLayoutNav() {
 
   if (!isAuthReady) return null;
 
-const showCart = (segments[0] as string) === '(tabs)' || (segments[0] as string) === 'product';
+  // 🛡️ SMART CART VISIBILITY: Only show on "Shopper" screens
+  const activeSegment = segments[0] as string | undefined;
+  const showCart = [
+    '(tabs)', 
+    'product', 
+    'search', 
+    'wishlist',
+    'profile'
+  ].includes(activeSegment || '');
+
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <StatusBar 
@@ -198,25 +216,71 @@ const showCart = (segments[0] as string) === '(tabs)' || (segments[0] as string)
 
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(tabs)" options={{ animation: 'fade' }} />
+        
+        {/* AUTH */}
         <Stack.Screen name="auth/login" options={{ animation: 'slide_from_bottom' }} />
         <Stack.Screen name="auth/signup" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="auth/verify" options={{ presentation: 'card', gestureEnabled: false }} />
+        <Stack.Screen name="auth/forgot-password" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="auth/update-password" options={{ presentation: 'modal' }} />
+
+        {/* ONBOARDING */}
         <Stack.Screen name="onboarding/role-setup" options={{ gestureEnabled: false, animation: 'fade' }} />
         <Stack.Screen name="onboarding/setup" options={{ gestureEnabled: false, animation: 'fade' }} />
+        <Stack.Screen name="onboarding/collector-setup" options={{ animation: 'slide_from_right' }} />
+
+        {/* GLOBAL SCREENS */}
         <Stack.Screen name="profile/edit" options={{ presentation: 'modal' }} />
+        <Stack.Screen name="settings" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="activity" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
+
+        {/* SELLER STUDIO */}
+        <Stack.Screen name="seller/dashboard" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="seller/verification" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="seller/post-product" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="seller/post-reel" options={{ presentation: 'fullScreenModal' }} />
+        <Stack.Screen name="seller/post-story" options={{ presentation: 'fullScreenModal' }} />
         <Stack.Screen name="seller/inventory" options={{ animation: 'slide_from_right' }} />
-        <Stack.Screen name="seller/settings" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="seller/orders" options={{ animation: 'slide_from_right' }} />
         <Stack.Screen name="seller/loyalty" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="seller/earnings" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="seller/settlement" options={{ animation: 'slide_from_right' }} />
+
+        {/* COMMERCE & CHAT */}
         <Stack.Screen name="product/[id]" options={{ animation: 'fade_from_bottom' }} />
-        <Stack.Screen name="chat/[id]" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="product/[id]/feed" options={{ animation: 'fade' }} />
+        <Stack.Screen name="chat/[chatId]" options={{ animation: 'slide_from_right' }} /> 
+        
+        <Stack.Screen name="orders/index" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="orders/[id]" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="orders/refund" options={{ presentation: 'modal' }} />
+
+        {/* WALLET */}
+        <Stack.Screen name="wallet/index" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="wallet/withdraw" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="payout/[id]" options={{ presentation: 'modal' }} />
+
+        {/* SUB-SCREENS */}
         <Stack.Screen name="settings/blocked-users" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="activity/notifications" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="activity/profile-views" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="activity/support-new" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="activity/support-history" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="activity/support-detail" options={{ animation: 'slide_from_right' }} />
+        <Stack.Screen name="story-viewer/[id]" options={{ animation: 'fade', presentation: 'transparentModal' }} />
+        <Stack.Screen name="wishlist/index" options={{ animation: 'slide_from_right' }} />
       </Stack>
 
       {showCart && (
-         <FloatingCart onPress={() => router.push('/checkout')} /> 
+         <FloatingCart onPress={() => cartSheetRef.current?.expand()} /> 
       )}
+      <CartSheet sheetRef={cartSheetRef} />
+
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+});

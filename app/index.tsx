@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { StyleSheet, Animated, StatusBar, Platform } from 'react-native';
+import { StyleSheet, Animated, StatusBar, Platform, View as RNView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { LayoutDashboard } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
@@ -12,7 +12,7 @@ import Colors from '../src/constants/Colors';
 import { useColorScheme } from '../src/components/useColorScheme';
 
 /**
- * 🚀 APP STARTUP SCREEN (Splash)
+ * 🚀 APP STARTUP SCREEN (Splash) v100.0
  * Purpose: Checks if the user is logged in and prepares their profile data.
  * Language: Simple English for clear logic flow.
  */
@@ -29,7 +29,7 @@ export default function SplashScreen() {
   useEffect(() => {
     // 1. Start the visual entrance animation
     Animated.parallel([
-      Animated.timing(opacity, { toValue: 1, duration: 1000, useNativeDriver: true }),
+      Animated.timing(opacity, { toValue: 1, duration: 800, useNativeDriver: true }),
       Animated.spring(scale, {
         toValue: 1,
         friction: 8, 
@@ -49,25 +49,32 @@ export default function SplashScreen() {
 
   const startApp = async () => {
     try {
-      // Check if the user is already signed in
-      const { data: { session } } = await supabase.auth.getSession();
+      // Minimum wait time to ensure the logo is seen (Premium Feel)
+      const minWait = new Promise(resolve => setTimeout(resolve, 2000));
       
-      if (session) {
-        // Load the user's latest profile and shop data
-        await refreshUserData();
-      }
-
-      // Mandatory 2-second pause so the user sees the logo and system stabilizes
-      setTimeout(() => {
+      // Check auth status
+      const authCheck = (async () => {
+        const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          router.replace('/(tabs)'); 
-        } else {
-          router.replace('/auth/login');
+          // Load critical data in background
+          await refreshUserData();
+          return true;
         }
-      }, 2000);
+        return false;
+      })();
+
+      // Wait for both timer and auth check
+      const [_, isLoggedIn] = await Promise.all([minWait, authCheck]);
+
+      if (isLoggedIn) {
+        router.replace('/(tabs)'); 
+      } else {
+        router.replace('/auth/login');
+      }
 
     } catch (e) {
       console.error("Startup error:", e);
+      // Fallback to login on critical failure
       router.replace('/auth/login');
     }
   };
@@ -81,25 +88,25 @@ export default function SplashScreen() {
         { opacity, transform: [{ scale }] }
       ]}>
         {/* APP ICON */}
-        <View style={[styles.iconBox, { backgroundColor: Colors.brand.emerald + '15' }]}>
+        <RNView style={[styles.iconBox, { backgroundColor: `${Colors.brand.emerald}15` }]}>
           <LayoutDashboard 
             size={44} 
             color={Colors.brand.emerald} 
             strokeWidth={3} 
           />
-        </View>
+        </RNView>
         
         <Text style={[styles.logoText, { color: theme.text }]}>StoreLink</Text>
         
-        <View style={styles.statusRow}>
-           <View style={[styles.pulseDot, { backgroundColor: Colors.brand.emerald }]} />
+        <RNView style={styles.statusRow}>
+           <RNView style={[styles.pulseDot, { backgroundColor: Colors.brand.emerald }]} />
            <Text style={styles.statusText}>READY FOR DISCOVERY</Text>
-        </View>
+        </RNView>
       </Animated.View>
 
-      <View style={styles.footer}>
+      <RNView style={styles.footer}>
           <Text style={[styles.footerText, { color: theme.border }]}>CONNECTED</Text>
-      </View>
+      </RNView>
     </View>
   );
 }

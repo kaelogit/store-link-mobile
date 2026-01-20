@@ -1,11 +1,11 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { 
   View, FlatList, ActivityIndicator, StyleSheet, 
-  Alert, TouchableOpacity, Dimensions, Platform 
+  TouchableOpacity, Dimensions, Platform, StatusBar 
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, Zap, PlayCircle, Film } from 'lucide-react-native';
+import { ArrowLeft, Zap } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
 
 // 💎 SPEED ENGINE
@@ -22,14 +22,14 @@ import { Text } from '../../../src/components/Themed';
 import Colors from '../../../src/constants/Colors';
 import { useColorScheme } from '../../../src/components/useColorScheme';
 
-const { width, height: screenHeight } = Dimensions.get('window');
+const { height: screenHeight } = Dimensions.get('window');
 // 🏛️ SCREEN LAYOUT: Matches the height for vertical snapping
-const CARD_HEIGHT = screenHeight * 0.85; 
+const CARD_HEIGHT = screenHeight * 0.82; 
 
 /**
- * 🏰 STORE FEED v81.0
+ * 🏰 STORE FEED v102.0
  * Purpose: A high-speed, vertical scrolling feed of a specific store's products.
- * Features: Fast image loading, smooth vertical snapping, and instant like updates.
+ * Features: Fast image loading, smooth vertical snapping, and instant interaction.
  */
 export default function StoreFeedScreen() {
   const router = useRouter();
@@ -38,7 +38,7 @@ export default function StoreFeedScreen() {
   
   const { id: sellerId, initialId } = useLocalSearchParams();
   const { addToCart } = useCartStore();
-  const { profile: currentUser, refreshUserData } = useUserStore();
+  const { profile: currentUser } = useUserStore();
 
   const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const commentSheetRef = useRef<any>(null);
@@ -56,13 +56,14 @@ export default function StoreFeedScreen() {
         .from('products')
         .select('*, seller:seller_id(*)') 
         .eq('seller_id', sellerId)
+        .eq('is_active', true) // Ensure we only show active items
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
       // Prepare images for instant viewing
       data?.forEach((p: any) => {
-        p.image_urls?.forEach((url: string) => Image.prefetch(url));
+        if (p.image_urls?.[0]) Image.prefetch(p.image_urls[0]);
       });
 
       return data || [];
@@ -74,7 +75,8 @@ export default function StoreFeedScreen() {
   const { data: wishlistIds = [] } = useQuery({
     queryKey: ['wishlist-ids', currentUser?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('wishlist').select('product_id').eq('user_id', currentUser?.id);
+      if (!currentUser?.id) return [];
+      const { data } = await supabase.from('wishlists').select('product_id').eq('user_id', currentUser.id);
       return data?.map(w => w.product_id) || [];
     },
     enabled: !!currentUser?.id
@@ -92,6 +94,7 @@ export default function StoreFeedScreen() {
     }
   }, [isLoading, products, initialId]);
 
+  // ⚡ OPTIMISTIC UPDATE: Like
   const handleToggleLike = async (productId: string) => {
     if (!currentUser?.id) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -114,7 +117,30 @@ export default function StoreFeedScreen() {
     try {
       await supabase.rpc('toggle_product_like', { p_user_id: currentUser.id, p_product_id: productId });
     } catch (e) {
-      refetch();
+      refetch(); // Revert on error
+    }
+  };
+
+  // ⚡ OPTIMISTIC UPDATE: Wishlist
+  const handleToggleSave = async (productId: string) => {
+    if (!currentUser?.id) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    // Update local cache for immediate feedback
+    queryClient.setQueryData(['wishlist-ids', currentUser.id], (old: string[] = []) => {
+      if (old.includes(productId)) return old.filter(id => id !== productId);
+      return [...old, productId];
+    });
+
+    try {
+        const isSaved = wishlistIds.includes(productId);
+        if (isSaved) {
+            await supabase.from('wishlists').delete().eq('user_id', currentUser.id).eq('product_id', productId);
+        } else {
+            await supabase.from('wishlists').insert({ user_id: currentUser.id, product_id: productId });
+        }
+    } catch (e) {
+        queryClient.invalidateQueries({ queryKey: ['wishlist-ids'] });
     }
   };
 
@@ -122,13 +148,17 @@ export default function StoreFeedScreen() {
     return (
       <View style={[styles.centered, { backgroundColor: theme.background }]}>
         <ActivityIndicator color={Colors.brand.emerald} size="large" />
-        <Text style={styles.loaderText}>LOADING STORE...</Text>
+        <Text style={[styles.loaderText, { color: theme.subtext }]}>LOADING STORE...</Text>
       </View>
     );
   }
 
+  const storeName = products[0]?.seller?.display_name?.toUpperCase() || 'STORE';
+
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]} edges={['top']}>
+      <StatusBar barStyle={theme.text === '#000' ? "dark-content" : "light-content"} />
+      
       {/* 🏛️ NAVIGATION */}
       <View style={[styles.header, { borderBottomColor: theme.surface }]}>
         <TouchableOpacity onPress={() => router.back()} style={[styles.backBtn, { backgroundColor: theme.surface }]}>
@@ -136,7 +166,7 @@ export default function StoreFeedScreen() {
         </TouchableOpacity>
         <View style={styles.headerInfo}>
           <Text style={[styles.headerTitle, { color: theme.text }]} numberOfLines={1}>
-            {products[0]?.seller?.display_name?.toUpperCase() || 'STORE'}
+            {storeName}
           </Text>
           <Text style={[styles.headerSub, { color: theme.subtext }]}>{products.length} ITEMS AVAILABLE</Text>
         </View>
@@ -151,21 +181,23 @@ export default function StoreFeedScreen() {
         keyExtractor={(item) => `showroom-${item.id}`}
         showsVerticalScrollIndicator={false}
         snapToInterval={CARD_HEIGHT}
-        snapToAlignment="start"
+        snapToAlignment="center" // Centering ensures the card isn't cut off
         decelerationRate="fast"
         
         removeClippedSubviews={Platform.OS === 'android'}
         initialNumToRender={2}
         maxToRenderPerBatch={2}
         windowSize={3}
+        
+        contentContainerStyle={{ paddingVertical: (screenHeight - CARD_HEIGHT) / 4 }} // Center first item vertically
 
         getItemLayout={(_, index) => ({ length: CARD_HEIGHT, offset: CARD_HEIGHT * index, index })}
         renderItem={({ item }) => (
-          <View style={{ height: CARD_HEIGHT }}>
+          <View style={{ height: CARD_HEIGHT, justifyContent: 'center' }}>
             <ProductCard 
               item={item}
               isSaved={wishlistIds.includes(item.id)}
-              onToggleWishlist={() => {}} 
+              onToggleWishlist={handleToggleSave} 
               onAddToCart={() => {
                 addToCart(item, item.seller);
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -189,6 +221,7 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loaderText: { marginTop: 15, fontSize: 8, fontWeight: '900', letterSpacing: 2, opacity: 0.4 },
+  
   header: { 
     flexDirection: 'row', 
     alignItems: 'center', 

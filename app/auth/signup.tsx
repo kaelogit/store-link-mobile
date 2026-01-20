@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   StyleSheet, TextInput, TouchableOpacity, 
-  ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Animated 
+  ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Animated, Keyboard 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { supabase } from '../../src/lib/supabase';
@@ -17,9 +17,9 @@ import Colors from '../../src/constants/Colors';
 import { useColorScheme } from '../../src/components/useColorScheme';
 
 /**
- * 🏰 ACCOUNT CREATION v97.0
+ * 🏰 ACCOUNT CREATION v98.0
  * Purpose: Safe and simple user registration.
- * Features: Automatic username generation and security validation.
+ * Features: Custom Email API, Auto-Username, and Password Physics.
  */
 export default function SignupScreen() {
   const router = useRouter();
@@ -36,7 +36,7 @@ export default function SignupScreen() {
   useEffect(() => {
     Animated.timing(fadeAnim, { 
       toValue: 1, 
-      duration: 1000, 
+      duration: 800, 
       useNativeDriver: true 
     }).start();
   }, []);
@@ -56,12 +56,13 @@ export default function SignupScreen() {
 
   /**
    * 🛡️ SIGNUP PROCESS
-   * Creates the user account and sets up their initial profile details.
+   * Creates the user account, sets up the profile, and triggers your CUSTOM EMAIL API.
    */
   const handleSignup = async () => {
     if (!isFormValid || loading) return;
     
     setLoading(true);
+    Keyboard.dismiss();
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const cleanEmail = email.toLowerCase().trim();
 
@@ -79,13 +80,18 @@ export default function SignupScreen() {
 
       let userId = data?.user?.id;
 
-      // Check if user already exists
+      // ⚠️ EDGE CASE: User exists? Try logging them in.
       if (authError) {
         if (authError.message.includes("already registered")) {
-          const { data: signInData } = await supabase.auth.signInWithPassword({
+          // Attempt to sign in if they guessed the password right
+          const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
             email: cleanEmail,
             password: password,
           });
+          
+          if (signInError) {
+            throw new Error("This email is already registered. Please log in.");
+          }
           userId = signInData?.user?.id;
         } else {
           throw authError;
@@ -94,7 +100,7 @@ export default function SignupScreen() {
 
       if (!userId) throw new Error("Could not create user ID.");
 
-      // 2. Set Up User Profile
+      // 2. Set Up User Profile (Idempotent Upsert)
       const generatedSlug = cleanEmail.split('@')[0] + Math.floor(1000 + Math.random() * 9000);
       
       const { error: profileError } = await supabase.from('profiles').upsert({
@@ -113,9 +119,9 @@ export default function SignupScreen() {
         updated_at: new Date().toISOString(),
       }, { onConflict: 'id' });
       
-      if (profileError) throw new Error("Failed to set up your profile.");
+      if (profileError) throw new Error("Failed to set up your profile database.");
 
-      // 3. Generate Verification Code
+      // 3. Generate Verification Code (OTP)
       const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
       const { error: otpError } = await supabase.from("otp_verifications").upsert({ 
         email: cleanEmail, 
@@ -124,7 +130,9 @@ export default function SignupScreen() {
 
       if (otpError) throw otpError;
 
-      // 4. Send Verification Email
+      // 4. 📧 EXTERNAL API HANDSHAKE (As requested)
+      // We fire and forget this to keep the UI snappy, or await it if strict confirmation is needed.
+      // Keeping it non-blocking for better UX.
       fetch("https://storelink.ng/api/send-email", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -133,10 +141,11 @@ export default function SignupScreen() {
             code: otpCode, 
             type: 'VERIFY_SIGNUP' 
           }),
-      }).catch(() => console.log("Email service busy."));
+      }).catch((err) => console.log("Email API Warning:", err));
 
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
+      // 5. Navigate to Verification
       router.replace({ 
         pathname: '/auth/verify', 
         params: { email: cleanEmail, type: 'signup' } 
@@ -144,7 +153,7 @@ export default function SignupScreen() {
 
     } catch (e: any) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-      Alert.alert("Signup Error", e.message.toUpperCase());
+      Alert.alert("Signup Issue", e.message);
     } finally {
       setLoading(false);
     }
@@ -261,7 +270,7 @@ const ShieldIndicator = ({ met, label, theme }: { met: boolean; label: string; t
 
 const styles = StyleSheet.create({
   container: { flex: 1 },
-  scrollContent: { paddingHorizontal: 30, paddingBottom: 60, paddingTop: 40, flexGrow: 1, justifyContent: 'center' },
+  scrollContent: { paddingHorizontal: 30, paddingBottom: 60, paddingTop: 60, flexGrow: 1, justifyContent: 'center' },
   backBtn: { width: 44, height: 44, justifyContent: 'center', marginBottom: 20 },
   header: { marginBottom: 45 },
   title: { fontSize: 40, fontWeight: '900', letterSpacing: -1.5, lineHeight: 46 },
@@ -275,7 +284,7 @@ const styles = StyleSheet.create({
   shieldDot: { width: 6, height: 6, borderRadius: 3 },
   shieldText: { fontSize: 10, fontWeight: '800', letterSpacing: 0.5 },
   mainBtn: { height: 75, borderRadius: 28, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 12, marginTop: 50, elevation: 8, shadowColor: '#000', shadowOpacity: 0.1, shadowRadius: 10 },
-  btnDisabled: { opacity: 0.15 },
+  btnDisabled: { opacity: 0.3 },
   btnLabel: { fontWeight: '900', fontSize: 13, letterSpacing: 1.5 },
   footerLink: { marginTop: 40, alignItems: 'center' },
   footerText: { fontSize: 14, fontWeight: '700' },

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   StyleSheet, TextInput, TouchableOpacity, 
   ScrollView, ActivityIndicator, Alert, KeyboardAvoidingView, 
-  Platform, Image, Animated 
+  Platform, Image, Animated, View as RNView
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { 
@@ -190,7 +190,8 @@ export default function MerchantSetupScreen() {
   const handleLaunch = async () => {
     const finalPhone = isSameAsWhatsapp ? whatsapp : phone;
 
-    if (!fullName || !gender || !logo || !storeName || slugStatus !== 'available' || !locationState || !locationCity || !whatsapp || !category) {
+    // Validate inputs
+    if (!fullName.trim() || !gender || !logo || !storeName.trim() || slugStatus !== 'available' || !locationState || !locationCity || !whatsapp.trim() || !category) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
       return Alert.alert("Missing Information", "Please fill in all the required fields (marked with *) to finish.");
     }
@@ -200,17 +201,17 @@ export default function MerchantSetupScreen() {
       const logoUrl = await uploadLogo(logo!);
 
       const { error } = await supabase.from('profiles').update({
-        full_name: fullName,
+        full_name: fullName.trim(),
         gender: gender,
-        phone_number: finalPhone,
-        whatsapp_number: whatsapp,
-        display_name: storeName,
+        phone_number: finalPhone.trim(),
+        whatsapp_number: whatsapp.trim(),
+        display_name: storeName.trim(),
         slug: slug,
         category: category,
         location_state: locationState,
         location_city: locationCity,
         location: `${locationCity}, ${locationState}`,
-        bio: bio,
+        bio: bio.trim(),
         logo_url: logoUrl,
         is_seller: true,
         prestige_weight: 2, 

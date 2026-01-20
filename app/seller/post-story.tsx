@@ -1,17 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { 
   StyleSheet, TouchableOpacity, Image, 
-  Dimensions, ActivityIndicator, Alert, ScrollView, Platform 
+  Dimensions, ActivityIndicator, Alert, ScrollView, Platform, StatusBar, View as RNView
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { X, Camera, ShoppingBag, Send, Check, Gem, Sparkles } from 'lucide-react-native';
 import * as Haptics from 'expo-haptics';
-import { decode } from 'base64-arraybuffer';
-
-// 🛡️ SDK 54 STABILITY BRIDGE
-import * as FileSystem from 'expo-file-system/legacy';
 
 // App Connection
 import { supabase } from '../../src/lib/supabase';
@@ -23,9 +19,9 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 const { width, height } = Dimensions.get('window');
 
 /**
- * 🏰 STORY STUDIO v96.0
- * Purpose: A fast creation tool for sharing 12-hour disappearing photos.
- * Features: Product tagging, premium Diamond styling, and safe-area compatibility.
+ * 🏰 STORY STUDIO v98.0
+ * Purpose: Ultra-fast 12-hour disappearing product updates.
+ * Fix: Replaced Base64 with stable Blob handshake for network reliability.
  */
 export default function PostStoryScreen() {
   const router = useRouter();
@@ -73,7 +69,7 @@ export default function PostStoryScreen() {
     }
   };
 
-  /** 🛡️ UPLOAD PROCESS */
+  /** 🛡️ HIGH-END UPLOAD PROTOCOL (Stability Fix) */
   const handlePublish = async () => {
     if (!media || !profile?.id) return Alert.alert("Photo Required", "Please select a photo to share your story.");
     
@@ -82,21 +78,22 @@ export default function PostStoryScreen() {
       const fileExt = media.split('.').pop() || 'jpg';
       const fileName = `${profile.id}/drop_${Date.now()}.${fileExt}`;
       
-      // Reading file using the SDK 54 stable path
-      const base64 = await (FileSystem as any).readAsStringAsync(media, { encoding: 'base64' });
-      if (!base64) throw new Error("File read error");
+      // 🛡️ THE FIX: Use Blob instead of Base64 to prevent "Network Failures" on Android
+      const response = await fetch(media);
+      const blob = await response.blob();
       
       const { error: uploadError } = await supabase.storage
-        .from('stories')
-        .upload(fileName, decode(base64), { 
+        .from('stories') 
+        .upload(fileName, blob, { 
           contentType: `image/${fileExt === 'png' ? 'png' : 'jpeg'}`,
-          upsert: true 
+          cacheControl: '3600',
+          upsert: false 
         });
 
       if (uploadError) throw uploadError;
       const { data: { publicUrl } } = supabase.storage.from('stories').getPublicUrl(fileName);
 
-      // Precise 12-hour expiry calculation
+      // Precise 12-hour expiry sync
       const expiryTime = new Date(Date.now() + 12 * 60 * 60 * 1000).toISOString();
       
       const { error } = await supabase.from('stories').insert({
@@ -113,7 +110,8 @@ export default function PostStoryScreen() {
       router.replace('/(tabs)');
       
     } catch (e: any) {
-      Alert.alert("Post Error", "We couldn't share your story. Please check your connection.");
+      console.error("Story Upload Handshake Failed:", e);
+      Alert.alert("Post Error", "Network interrupted. Please check your signal and try again.");
     } finally {
       setLoading(false);
     }
@@ -121,11 +119,14 @@ export default function PostStoryScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: media ? 'black' : theme.background }]}>
+      {/* Dynamic Status Bar for Immersive Preview */}
+      <StatusBar barStyle={media ? "light-content" : (theme.text === '#000' ? "dark-content" : "light-content")} />
+      
       {media ? (
         <View style={styles.previewContainer}>
           <Image source={{ uri: media }} style={styles.fullPreview} />
           
-          <View style={[styles.overlay, { paddingTop: insets.top || 20, paddingBottom: insets.bottom || 20 }]}>
+          <View style={[styles.overlay, { paddingTop: Math.max(insets.top, 20), paddingBottom: Math.max(insets.bottom, 20) }]}>
             <View style={styles.topControls}>
               <TouchableOpacity onPress={() => setMedia(null)} style={styles.iconBtn}>
                 <X color="white" size={28} strokeWidth={2.5} />
@@ -138,7 +139,7 @@ export default function PostStoryScreen() {
                 }} 
                 style={[
                   styles.tagBtn, 
-                  selectedProductId && { backgroundColor: isDiamond ? '#8B5CF6' : Colors.brand.emerald, borderColor: 'white' }
+                  selectedProductId ? { backgroundColor: isDiamond ? '#8B5CF6' : Colors.brand.emerald, borderColor: 'white' } : {}
                 ]}
               >
                 {selectedProductId ? <Check color="white" size={18} strokeWidth={3} /> : <ShoppingBag color="white" size={18} />}
@@ -149,50 +150,50 @@ export default function PostStoryScreen() {
             </View>
 
             <View style={styles.bottomControls}>
-               <TouchableOpacity 
-                style={[styles.publishBtn, isDiamond && { backgroundColor: '#8B5CF6' }]} 
-                onPress={handlePublish}
-                disabled={loading}
-               >
-                 {loading ? <ActivityIndicator color="white" /> : (
-                   <>
-                    <Text style={[styles.publishText, isDiamond && { color: 'white' }]}>SHARE STORY</Text>
-                    {isDiamond ? <Sparkles color="white" size={20} /> : <Send color="#111827" size={20} />}
-                   </>
-                 )}
-               </TouchableOpacity>
+                <TouchableOpacity 
+                  style={[styles.publishBtn, isDiamond && { backgroundColor: '#8B5CF6' }]} 
+                  onPress={handlePublish}
+                  disabled={loading}
+                >
+                  {loading ? <ActivityIndicator color="white" /> : (
+                    <>
+                     <Text style={[styles.publishText, isDiamond && { color: 'white' }]}>SHARE STORY</Text>
+                     {isDiamond ? <Sparkles color="white" size={20} /> : <Send color="#111827" size={20} />}
+                    </>
+                  )}
+                </TouchableOpacity>
             </View>
           </View>
         </View>
       ) : (
-        <View style={[styles.captureEmpty, { paddingTop: insets.top || 20 }]}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+        <View style={[styles.captureEmpty, { paddingTop: Math.max(insets.top, 20) }]}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             <X color={theme.text} size={28} strokeWidth={2.5} />
           </TouchableOpacity>
           <View style={styles.emptyContent}>
-             <View style={[styles.cameraCircle, { backgroundColor: theme.surface }, isDiamond && { borderColor: '#8B5CF6', borderWidth: 2 }]}>
-                {isDiamond ? <Gem color="#8B5CF6" size={48} /> : <Camera color={theme.text} size={48} strokeWidth={1.5} />}
-             </View>
-             <Text style={[styles.emptyTitle, { color: theme.text }]}>
-               {isDiamond ? 'PREMIUM DROP' : 'ADD STORY'}
-             </Text>
-             <Text style={[styles.emptySub, { color: theme.subtext }]}>
-               Share photos of your products that disappear after 12 hours.
-             </Text>
-             
-             <TouchableOpacity 
-               style={[styles.selectBtn, { backgroundColor: isDiamond ? '#8B5CF6' : theme.text }]} 
-               onPress={pickMedia}
-             >
-                <Text style={[styles.selectBtnText, { color: isDiamond ? 'white' : theme.background }]}>SELECT PHOTO</Text>
-             </TouchableOpacity>
+              <View style={[styles.cameraCircle, { backgroundColor: theme.surface }, isDiamond && { borderColor: '#8B5CF6', borderWidth: 2 }]}>
+                 {isDiamond ? <Gem color="#8B5CF6" size={48} /> : <Camera color={theme.text} size={48} strokeWidth={1.5} />}
+              </View>
+              <Text style={[styles.emptyTitle, { color: theme.text }]}>
+                {isDiamond ? 'PREMIUM DROP' : 'ADD STORY'}
+              </Text>
+              <Text style={[styles.emptySub, { color: theme.subtext }]}>
+                Share photos of your products that disappear after 12 hours.
+              </Text>
+              
+              <TouchableOpacity 
+                style={[styles.selectBtn, { backgroundColor: isDiamond ? '#8B5CF6' : theme.text }]} 
+                onPress={pickMedia}
+              >
+                 <Text style={[styles.selectBtnText, { color: isDiamond ? 'white' : theme.background }]}>SELECT PHOTO</Text>
+              </TouchableOpacity>
           </View>
         </View>
       )}
 
       {showProductPicker && (
         <View style={styles.pickerBackdrop}>
-           <View style={[styles.pickerSheet, { backgroundColor: theme.background, paddingBottom: insets.bottom || 25 }]}>
+           <View style={[styles.pickerSheet, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 25) }]}>
               <View style={styles.pickerHeader}>
                 <Text style={[styles.pickerTitle, { color: theme.text }]}>TAG AN ITEM</Text>
                 <TouchableOpacity onPress={() => setShowProductPicker(false)}>
@@ -233,21 +234,27 @@ const styles = StyleSheet.create({
   previewContainer: { flex: 1 },
   fullPreview: { width, height, resizeMode: 'cover' },
   overlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'space-between', padding: 25 },
+  
   topControls: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   iconBtn: { backgroundColor: 'rgba(0,0,0,0.5)', padding: 12, borderRadius: 24 },
+  
   tagBtn: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: 'rgba(0,0,0,0.7)', paddingHorizontal: 20, paddingVertical: 14, borderRadius: 28, borderWidth: 1, borderColor: 'rgba(255,255,255,0.4)' },
   tagBtnText: { color: 'white', fontWeight: '900', fontSize: 11, letterSpacing: 1.5 },
+  
   bottomControls: { alignItems: 'center', marginBottom: 20 },
   publishBtn: { backgroundColor: 'white', height: 70, borderRadius: 35, paddingHorizontal: 45, flexDirection: 'row', alignItems: 'center', gap: 15, elevation: 12, shadowColor: '#000', shadowOpacity: 0.4, shadowRadius: 15 },
   publishText: { color: '#111827', fontWeight: '900', fontSize: 15, letterSpacing: 1.5 },
+  
   captureEmpty: { flex: 1 },
   backBtn: { padding: 25 },
   emptyContent: { flex: 1, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 45 },
   cameraCircle: { width: 130, height: 130, borderRadius: 65, justifyContent: 'center', alignItems: 'center', marginBottom: 35 },
   emptyTitle: { fontSize: 36, fontWeight: '900', letterSpacing: -1.5 },
   emptySub: { fontSize: 16, textAlign: 'center', marginTop: 12, lineHeight: 26, fontWeight: '500', opacity: 0.8 },
+  
   selectBtn: { paddingHorizontal: 45, paddingVertical: 22, borderRadius: 24, marginTop: 45, elevation: 4 },
   selectBtnText: { fontWeight: '900', fontSize: 14, letterSpacing: 2 },
+  
   pickerBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'flex-end', zIndex: 100 },
   pickerSheet: { borderTopLeftRadius: 40, borderTopRightRadius: 40, height: '65%', padding: 30 },
   pickerHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 30 },

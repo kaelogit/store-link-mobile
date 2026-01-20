@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { 
   StyleSheet, TouchableOpacity, ScrollView, 
-  ActivityIndicator, Alert, RefreshControl, Platform, Dimensions 
+  ActivityIndicator, Alert, RefreshControl, Platform, Dimensions, StatusBar, View as RNView
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -26,7 +26,7 @@ import { PaystackTerminal } from '../../src/components/PaystackTerminal';
 const { width } = Dimensions.get('window');
 
 /**
- * 🏰 STORE PLANS v111.0
+ * 🏰 STORE PLANS v112.0
  * Purpose: Helping sellers choose between Standard and Diamond plans.
  * Logic: Clear comparison of features with simple language.
  */
@@ -86,8 +86,10 @@ export default function SubscriptionScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
-      <View style={[styles.header, { borderBottomColor: theme.surface, paddingTop: insets.top + 10 }]}>
-        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn}>
+      <StatusBar barStyle={theme.text === '#000' ? "dark-content" : "light-content"} />
+      
+      <View style={[styles.header, { borderBottomColor: theme.surface, paddingTop: Math.max(insets.top, 20) }]}>
+        <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
           <ArrowLeft color={theme.text} size={24} strokeWidth={2.5} />
         </TouchableOpacity>
         <Text style={[styles.headerTitle, { color: theme.text }]}>CHOOSE A PLAN</Text>
@@ -108,7 +110,7 @@ export default function SubscriptionScreen() {
             <Text style={[styles.planName, { color: theme.text }]}>{(profile?.subscription_plan || 'BASIC').toUpperCase()}</Text>
           </View>
           {isPlanActive && expiryDate ? (
-            <View style={[styles.activeBadge, { backgroundColor: Colors.brand.emerald + '15' }]}>
+            <View style={[styles.activeBadge, { backgroundColor: `${Colors.brand.emerald}15` }]}>
                <Clock size={12} color={Colors.brand.emerald} strokeWidth={2.5} />
                <Text style={[styles.activeText, { color: Colors.brand.emerald }]}>Ends {expiryDate.toLocaleDateString()}</Text>
             </View>
@@ -143,14 +145,14 @@ export default function SubscriptionScreen() {
           style={[styles.planCard, { backgroundColor: theme.surface, borderColor: theme.border }, profile?.subscription_plan === 'standard' && isPlanActive && { borderColor: Colors.brand.emerald, borderWidth: 2.5 }]}
           onPress={() => openPaymentGateway('standard')}
         >
-          <View style={styles.planHeader}>
-            <View style={[styles.iconBox, { backgroundColor: Colors.brand.emerald + '15' }]}><Crown color={Colors.brand.emerald} size={28} strokeWidth={2.5} /></View>
+          <View style={[styles.planHeader, { padding: 25, paddingBottom: 0 }]}>
+            <View style={[styles.iconBox, { backgroundColor: `${Colors.brand.emerald}15` }]}><Crown color={Colors.brand.emerald} size={28} strokeWidth={2.5} /></View>
             <View style={{flex: 1, backgroundColor: 'transparent'}}>
               <Text style={[styles.planTier, { color: Colors.brand.emerald }]}>STANDARD SHOP</Text>
               <Text style={[styles.planPrice, { color: theme.text }]}>₦{calculatePrice('standard', selectedMonths).toLocaleString()}</Text>
             </View>
           </View>
-          <View style={styles.benefitList}>
+          <View style={[styles.benefitList, { padding: 25 }]}>
             <Benefit item="Add unlimited products to your shop" color={Colors.brand.emerald} theme={theme} />
             <Benefit item="Get a verified badge for your profile" color={Colors.brand.emerald} theme={theme} />
             <Benefit item="Show up in regular search results" color={Colors.brand.emerald} theme={theme} />
@@ -215,31 +217,41 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingBottom: 15, borderBottomWidth: 1.5 },
   headerTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
   backBtn: { width: 44, height: 44, justifyContent: 'center' },
+  
   scrollContent: { padding: 25 },
+  
   statusCard: { padding: 25, borderRadius: 28, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 35, borderWidth: 1.5 },
   offlineCard: { borderColor: '#EF4444', backgroundColor: '#FEF2F2' },
   statusLabel: { fontSize: 9, fontWeight: '900', color: '#9CA3AF', letterSpacing: 1.5 },
   planName: { fontSize: 22, fontWeight: '900', marginTop: 5, letterSpacing: -0.5 },
+  
   activeBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   activeText: { fontSize: 9, fontWeight: '900' },
   offlineBadge: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#FEE2E2', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   offlineText: { fontSize: 10, fontWeight: '900', color: '#EF4444' },
+  
   sectionTitle: { fontSize: 9, fontWeight: '900', letterSpacing: 2, marginBottom: 15, opacity: 0.6 },
+  
   durationPicker: { flexDirection: 'row', padding: 6, borderRadius: 20, gap: 4 },
   durationTab: { flex: 1, paddingVertical: 12, alignItems: 'center', borderRadius: 14, position: 'relative' },
   durationLabel: { fontSize: 10, fontWeight: '900' },
   discountBadge: { position: 'absolute', top: -5, right: -2, backgroundColor: '#EF4444', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 6 },
   discountText: { color: 'white', fontSize: 7, fontWeight: '900' },
+  
   planCard: { borderRadius: 32, borderWidth: 1.5, marginBottom: 20, overflow: 'hidden' },
+  planHeader: { flexDirection: 'row', alignItems: 'center', gap: 18, marginBottom: 25, backgroundColor: 'transparent' },
+  
   diamondCard: { borderWidth: 0, elevation: 12, shadowColor: '#8B5CF6', shadowOpacity: 0.2, shadowRadius: 20 },
   diamondGradient: { padding: 30 },
-  planHeader: { flexDirection: 'row', alignItems: 'center', gap: 18, marginBottom: 25, backgroundColor: 'transparent' },
+  
   iconBox: { width: 56, height: 56, borderRadius: 18, justifyContent: 'center', alignItems: 'center' },
   planTier: { fontSize: 10, fontWeight: '900', letterSpacing: 1.5 },
   planPrice: { fontSize: 32, fontWeight: '900', letterSpacing: -1 },
+  
   benefitList: { gap: 14, backgroundColor: 'transparent' },
   benefitRow: { flexDirection: 'row', alignItems: 'center', gap: 12, backgroundColor: 'transparent' },
   benefitText: { fontSize: 13, fontWeight: '700' },
+  
   diamondTag: { alignSelf: 'flex-start', backgroundColor: '#8B5CF6', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 10, marginBottom: 20, flexDirection: 'row', alignItems: 'center', gap: 6 },
   diamondTagText: { color: 'white', fontSize: 8, fontWeight: '900', letterSpacing: 1 }
 });

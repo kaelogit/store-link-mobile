@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { 
   StyleSheet, FlatList, TouchableOpacity, 
-  ActivityIndicator, TextInput, Share, RefreshControl, Platform 
+  ActivityIndicator, TextInput, Share, RefreshControl, Platform, StatusBar 
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Image } from 'expo-image';
@@ -21,7 +21,7 @@ import { useColorScheme } from '../../src/components/useColorScheme';
 import { OrderDetailsModal } from '../../src/components/OrderDetailsModal';
 
 /**
- * 🏰 MERCHANT ORDERS v96.0
+ * 🏰 MERCHANT ORDERS v97.0
  * Logic: Triple-Lock Deal Synchronization (Pending -> Confirmed -> Delivered -> Completed).
  * Visual: Diamond Buyer recognition & Monthly Revenue Pulse.
  * Hardware: Full Safe-Area Top Padding for notched displays.
@@ -68,6 +68,7 @@ export default function SellerOrdersScreen() {
   const calculateTotalSales = (allOrders: any[]) => {
     const now = new Date();
     const currentMonthOrders = allOrders.filter(o => {
+      if (!o.created_at) return false;
       const d = new Date(o.created_at);
       return (o.status === 'confirmed' || o.status === 'delivered' || o.status === 'completed') && 
              d.getMonth() === now.getMonth() && 
@@ -86,12 +87,16 @@ export default function SellerOrdersScreen() {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
     let csv = "Order ID,Buyer Handle,Amount,Status,Date\n";
     orders.forEach(o => {
-      const date = new Date(o.created_at).toLocaleDateString();
+      const date = o.created_at ? new Date(o.created_at).toLocaleDateString() : 'N/A';
       csv += `${o.id.slice(0,8)},@${o.buyer?.slug || 'customer'},${o.total_amount},${o.status},${date}\n`;
     });
-    await Share.share({ 
-      message: `StoreLink Commercial Report - ${new Date().toLocaleDateString()}\n\n${csv}` 
-    });
+    try {
+        await Share.share({ 
+          message: `StoreLink Commercial Report - ${new Date().toLocaleDateString()}\n\n${csv}` 
+        });
+    } catch (e) {
+        console.error("Share failed", e);
+    }
   };
 
   const filteredOrders = orders.filter(o => 
@@ -105,14 +110,16 @@ export default function SellerOrdersScreen() {
 
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
+      <StatusBar barStyle={theme.text === '#000' ? "dark-content" : "light-content"} />
+      
       {/* 📱 HEADER - Hardware-Safe */}
-      <View style={[styles.header, { paddingTop: insets.top + 10, borderBottomColor: theme.border }]}>
+      <View style={[styles.header, { paddingTop: Math.max(insets.top, 20), borderBottomColor: theme.border }]}>
         <View style={styles.topNav}>
-          <TouchableOpacity onPress={() => router.back()} style={styles.navBtn}>
+          <TouchableOpacity onPress={() => router.back()} style={styles.navBtn} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             <ArrowLeft color={theme.text} size={24} strokeWidth={2.5} />
           </TouchableOpacity>
           <Text style={[styles.headerTitle, { color: theme.text }]}>ORDER LEDGER</Text>
-          <TouchableOpacity onPress={exportSalesData} style={styles.navBtn}>
+          <TouchableOpacity onPress={exportSalesData} style={styles.navBtn} hitSlop={{top: 10, bottom: 10, left: 10, right: 10}}>
             <FileText color={Colors.brand.emerald} size={22} strokeWidth={2.5} />
           </TouchableOpacity>
         </View>
@@ -141,7 +148,7 @@ export default function SellerOrdersScreen() {
                 <Text style={styles.statLabel}>MONTHLY REVENUE</Text>
                 <Text style={[styles.statValue, { color: theme.background }]}>₦{totalSales.toLocaleString()}</Text>
               </View>
-              <View style={styles.iconCircle}><TrendingUp color={theme.text} size={22} strokeWidth={3} /></View>
+              <View style={styles.iconCircle}><TrendingUp color={theme.background} size={22} strokeWidth={3} /></View>
             </View>
           </View>
         )}
@@ -174,7 +181,13 @@ export default function SellerOrdersScreen() {
   );
 }
 
-const OrderRow = ({ item, onPress, theme }: any) => {
+interface OrderRowProps {
+    item: any;
+    onPress: () => void;
+    theme: any;
+}
+
+const OrderRow = ({ item, onPress, theme }: OrderRowProps) => {
   const isDiamondBuyer = item.buyer?.prestige_weight === 3;
   
   const getStatusStyle = (status: string) => {
@@ -200,7 +213,7 @@ const OrderRow = ({ item, onPress, theme }: any) => {
       <View style={[styles.orderLeft, { backgroundColor: 'transparent' }]}>
         <View style={[styles.orderAvatar, { backgroundColor: theme.background, borderColor: isDiamondBuyer ? '#8B5CF6' : theme.border }]}>
             {item.buyer?.logo_url ? (
-              <Image source={{ uri: item.buyer.logo_url }} style={styles.avatarImg} />
+              <Image source={{ uri: item.buyer.logo_url }} style={styles.avatarImg} contentFit="cover" />
             ) : (
               <User size={20} color={isDiamondBuyer ? '#8B5CF6' : theme.subtext} />
             )}
@@ -231,13 +244,13 @@ const styles = StyleSheet.create({
   header: { paddingHorizontal: 20, paddingBottom: 20, borderBottomWidth: 1.5 },
   topNav: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 },
   navBtn: { width: 44, height: 44, justifyContent: 'center', alignItems: 'center' },
-  headerTitle: { fontSize: 10, fontWeight: '900', letterSpacing: 2 },
+  headerTitle: { fontSize: 11, fontWeight: '900', letterSpacing: 2 },
   searchBox: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, height: 52, borderRadius: 16, gap: 12, borderWidth: 1 },
   input: { flex: 1, fontSize: 14, fontWeight: '700' },
   list: { paddingBottom: 100 },
   statsContainer: { padding: 20 },
   mainStat: { padding: 25, borderRadius: 32, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', elevation: 4, shadowOpacity: 0.1, shadowRadius: 10 },
-  statLabel: { color: 'rgba(255,255,255,0.5)', fontSize: 8, fontWeight: '900', letterSpacing: 1.5 },
+  statLabel: { fontSize: 9, fontWeight: '900', letterSpacing: 1.5, color: 'rgba(255,255,255,0.6)' },
   statValue: { fontSize: 24, fontWeight: '900', marginTop: 8, letterSpacing: -1 },
   iconCircle: { width: 48, height: 48, borderRadius: 24, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
   orderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: 18, marginHorizontal: 15, borderRadius: 24, marginBottom: 12, borderWidth: 1 },
